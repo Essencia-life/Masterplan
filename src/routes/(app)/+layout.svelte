@@ -259,7 +259,7 @@
 
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
 	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
-		<h1 class="mr-auto text-2xl leading-none">Essência <span class="hidden text-base font-normal text-muted sm:inline">· Occupancy</span></h1>
+		<h1 class="mr-auto text-2xl leading-none">essência <span class="hidden text-base font-normal text-muted sm:inline">· Master</span></h1>
 		{#if timeline.loading > 0}<span class="text-xs text-muted">loading…</span>{/if}
 		<div class="hidden items-center gap-1 sm:flex">
 			<button class="btn" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></button>
