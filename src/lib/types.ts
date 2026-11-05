@@ -37,5 +37,9 @@ export type EventDetail = {
 	end: string;
 	status: 'confirmed' | 'tentative';
 	description: string;
+	allDay: boolean;
+	/** HH:mm, only for timed events */
+	startTime: string;
+	endTime: string;
 	resourceIds: string[];
 };

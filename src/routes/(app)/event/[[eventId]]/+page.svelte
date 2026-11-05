@@ -28,6 +28,9 @@
 		end: '', // inclusive in the UI, converted to exclusive on save
 		status: 'confirmed' as 'confirmed' | 'tentative',
 		description: '',
+		allDay: true,
+		startTime: '09:00',
+		endTime: '10:00',
 		resourceIds: [] as string[]
 	});
 	let tab = $state<'details' | 'resources' | 'conflicts'>('details');
@@ -45,7 +48,7 @@
 		if (id) {
 			getEvent({ eventId: id, calendar: sp.get('cal') ?? undefined })
 				.then((e: EventDetail) => {
-					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: dayToIso(isoToDay(e.end) - 1), status: e.status, description: e.description, resourceIds: e.resourceIds };
+					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds };
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'));
 		} else {
@@ -62,6 +65,9 @@
 				end: to ? dayToIso(isoToDay(to) - 1) : from,
 				status: 'confirmed',
 				description: '',
+				allDay: true,
+				startTime: '09:00',
+				endTime: '10:00',
 				resourceIds: row && !isMain ? [row] : []
 			};
 		}
@@ -158,7 +164,10 @@
 				calendar: form.calendar,
 				title: form.title,
 				start: form.start,
-				end: dayToIso(isoToDay(form.end) + 1),
+				end: form.allDay ? dayToIso(isoToDay(form.end) + 1) : form.end,
+				allDay: form.allDay,
+				startTime: form.allDay ? undefined : form.startTime,
+				endTime: form.allDay ? undefined : form.endTime,
 				status: form.status,
 				description: form.description,
 				resourceIds: form.resourceIds
@@ -226,6 +235,19 @@
 				<Input id="f-to" type="date" min={form.start} bind:value={form.end} />
 			</div>
 		</div>
+		<Checkbox bind:checked={form.allDay}>All day</Checkbox>
+		{#if !form.allDay}
+			<div class="grid grid-cols-2 gap-3">
+				<div>
+					<Label for="f-t1" class="mb-1">Start time</Label>
+					<Input id="f-t1" type="time" bind:value={form.startTime} />
+				</div>
+				<div>
+					<Label for="f-t2" class="mb-1">End time</Label>
+					<Input id="f-t2" type="time" bind:value={form.endTime} />
+				</div>
+			</div>
+		{/if}
 		<div>
 			<Label for="f-status" class="mb-1">Status</Label>
 			<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />

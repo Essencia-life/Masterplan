@@ -150,6 +150,8 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00
 
 export function normalize(e: calendar_v3.Schema$Event, rowId: string): CalEvent | null {
 	if (e.status === 'cancelled' || !e.id) return null;
+	// a declined room booking (resource said no) must not show up in the resource calendar
+	if (!isMainKey(rowId) && e.attendees?.some((a) => (a.self || a.email === rowId) && a.responseStatus === 'declined')) return null;
 	const start = (e.start?.date ?? e.start?.dateTime ?? '').slice(0, 10);
 	let end: string;
 	if (e.end?.date) end = e.end.date;

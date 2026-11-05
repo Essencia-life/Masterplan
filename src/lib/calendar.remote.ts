@@ -12,6 +12,7 @@ import {
 	resolveOrganizer
 } from '#lib/server/google';
 
+const TIME_ZONE = 'Europe/Lisbon';
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Rows, groups and colours (resource calendars discovered dynamically). */
@@ -62,7 +63,8 @@ export const getEvent = query(
 					}
 				}
 				const start = (ev.start?.date ?? ev.start?.dateTime ?? '').slice(0, 10);
-				const end = ev.end?.date ?? addDays((ev.end?.dateTime ?? start).slice(0, 10), 1);
+				const allDay = !!ev.start?.date;
+				const end = allDay ? ev.end!.date! : (ev.end?.dateTime ?? ev.start?.dateTime ?? '').slice(0, 10);
 				return {
 					id: ev.id!,
 					linkId: ev.iCalUID ?? ev.id!,
@@ -72,6 +74,9 @@ export const getEvent = query(
 					end,
 					status: ev.status === 'tentative' ? 'tentative' : 'confirmed',
 					description: ev.description ?? '',
+					allDay,
+					startTime: allDay ? '' : (ev.start?.dateTime ?? '').slice(11, 16),
+					endTime: allDay ? '' : (ev.end?.dateTime ?? '').slice(11, 16),
 					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!)
 				};
 			} catch {
@@ -90,11 +95,16 @@ const saveSchema = z.object({
 	end: isoDate,
 	status: z.enum(['confirmed', 'tentative']),
 	description: z.string().max(5000).default(''),
+	allDay: z.boolean().default(true),
+	startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+	endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
 	resourceIds: z.array(z.string()).max(40).default([])
 });
 
 export const saveEvent = command(saveSchema, async (input) => {
-	if (input.end <= input.start) error(400, 'End must be after start');
+	if (input.allDay ? input.end <= input.start : input.end < input.start) error(400, 'End must be after start');
+	if (!input.allDay && (!input.startTime || !input.endTime)) error(400, 'Times are required');
+	if (!input.allDay && input.end === input.start && input.endTime! <= input.startTime!) error(400, 'End time must be after start time');
 	const { resourceIds } = await loadMeta();
 	for (const r of input.resourceIds) if (!resourceIds.has(r)) error(400, 'Unknown resource');
 	const calendarId = await resolveCalendarId(input.calendar);
@@ -102,8 +112,8 @@ export const saveEvent = command(saveSchema, async (input) => {
 		summary: input.title,
 		description: input.description,
 		status: input.status,
-		start: { date: input.start },
-		end: { date: input.end },
+		start: input.allDay ? { date: input.start } : { dateTime: `${input.start}T${input.startTime}:00`, timeZone: TIME_ZONE },
+		end: input.allDay ? { date: input.end } : { dateTime: `${input.end}T${input.endTime}:00`, timeZone: TIME_ZONE },
 		attendees: input.resourceIds.map((email) => ({ email, resource: true }))
 	};
 	const api = calendar().events;

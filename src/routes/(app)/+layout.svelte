@@ -239,7 +239,7 @@
 <svelte:window bind:innerWidth onkeydown={(e) => e.key === 'Escape' && menuOpen && (menuOpen = false)} />
 
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
-	<header class="flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
+	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
 		<h1 class="mr-auto text-2xl leading-none">Essência <span class="hidden text-base font-normal text-muted sm:inline">· Occupancy</span></h1>
 		{#if timeline.loading > 0}<span class="text-xs text-muted">loading…</span>{/if}
 		<div class="hidden items-center gap-1 sm:flex">
@@ -324,7 +324,7 @@
 				</div>
 
 				<!-- column shading (weekends / today) for the whole body -->
-				<div class="pointer-events-none absolute bottom-0 z-0" style="top:102px;left:{LABW}px;width:{N_DAYS * DAYW}px">
+				<div class="pointer-events-none absolute bottom-0 z-0" style="top:102px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
 					{#each days as d (d)}
 						{#if isWeekend(d) || d === TODAY}
 							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === TODAY ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
@@ -348,7 +348,7 @@
 						{#each g.rows as row (row.id)}
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
-							<div class="relative flex border-b border-line-soft" data-row={row.available ? row.id : undefined} style="height:{h}px">
+							<div class="relative flex border-b border-line-soft" data-row={row.kind === 'calendar' && row.available ? row.id : undefined} style="height:{h}px">
 								<div data-label class="sticky left-0 z-10 flex shrink-0 items-center gap-2 bg-surface px-2 text-sm" style="width:{LABW}px" title={row.label}>
 									<span class="size-2.5 shrink-0 rounded-full" style="background:{row.color}"></span>
 									<span class="truncate" class:text-muted={!row.available}>{row.label}</span>
