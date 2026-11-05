@@ -282,17 +282,17 @@
 				<!-- header -->
 				<div class="sticky top-0 z-20 border-b border-line bg-surface">
 					<div class="flex" style="height:28px">
-						<div class="sticky left-0 z-10 shrink-0 bg-surface" style="width:{LABW}px"></div>
+						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each months as m (m.key)}
-								<div class="absolute top-0 h-full overflow-clip border-l border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
+								<div class="absolute top-0 h-full overflow-clip border-l border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
 									<span class="sticky inline-block whitespace-nowrap px-2 font-display text-[15px] font-bold leading-[28px]" style="left:{LABW}px">{m.label}</span>
 								</div>
 							{/each}
 						</div>
 					</div>
 					<div class="flex" style="height:48px">
-						<div class="sticky left-0 z-10 shrink-0 bg-surface" style="width:{LABW}px"></div>
+						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								<div
@@ -309,7 +309,7 @@
 						</div>
 					</div>
 					<div class="flex" style="height:26px">
-						<div class="sticky left-0 z-10 flex shrink-0 items-center bg-surface px-2 text-[11px] text-muted" style="width:{LABW}px">Moon</div>
+						<div class="sticky left-0 z-10 flex shrink-0 items-center bg-surface px-2 text-[11px] text-muted border-r border-line" style="width:{LABW}px">Moon</div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								{@const p = moonPath(moonPhase(d))}
@@ -355,7 +355,7 @@
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
 							<div class="relative flex border-b border-line-soft" data-row={row.kind === 'calendar' && row.available ? row.id : undefined} style="height:{h}px">
-								<div data-label class="sticky left-0 z-10 flex shrink-0 items-start gap-2 bg-surface px-2 text-sm leading-5" style="width:{LABW}px;padding-top:{PAD / 2 + 3}px" title={row.label}>
+								<div data-label class="sticky left-0 z-10 flex shrink-0 items-start gap-2 bg-surface px-2 text-sm leading-5 border-r border-line" style="width:{LABW}px;padding-top:{PAD / 2 + 3}px" title={row.label}>
 									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{row.color}"></span>
 									<span class="truncate" class:text-muted={!row.available}>{row.label}</span>
 								</div>
