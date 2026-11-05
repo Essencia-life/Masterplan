@@ -58,6 +58,7 @@ function calendarGroup(name: string) {
 
 const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
+const IGNORED_NAMES = /^(private|phases of the moon)$/i;
 const isNoise = (id: string) => /#(holiday|contacts)@|holiday@group\.v\.calendar\.google\.com/.test(id);
 
 let metaCache: { at: number; meta: CalendarMeta; ids: Set<string>; resourceIds: Set<string>; writableIds: Set<string> } | undefined;
@@ -84,7 +85,7 @@ export async function loadMeta(force = false) {
 	const resourceIds = new Set<string>();
 
 	const calendars = entries
-		.filter((e) => e.id && !isResourceId(e.id) && !isNoise(e.id) && e.accessRole !== 'freeBusyReader')
+		.filter((e) => e.id && !isResourceId(e.id) && !isNoise(e.id) && !IGNORED_NAMES.test(nameOf(e).trim()) && e.accessRole !== 'freeBusyReader')
 		.sort((a, b) => cmp(nameOf(a), nameOf(b)));
 	for (const e of calendars) {
 		const writable = e.accessRole === 'owner' || e.accessRole === 'writer';
@@ -122,18 +123,26 @@ export async function resolveCalendarId(rowId: string) {
 	return rowId;
 }
 
+export const TIME_ZONE = 'Europe/Lisbon';
+const fmtDate = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
+const fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+/** Calendar day (YYYY-MM-DD) in the app's time zone. Resource calendars return times in their own zone, so never slice the string. */
+export const localDay = (v?: string | null) => (!v ? '' : v.length === 10 ? v : fmtDate.format(new Date(v)));
+export const localTime = (v: string) => fmtTime.format(new Date(v));
+export const dayOf = (t?: calendar_v3.Schema$EventDateTime | null) => localDay(t?.date ?? t?.dateTime);
+
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86_400_000).toISOString().slice(0, 10);
 
 export function normalize(e: calendar_v3.Schema$Event, rowId: string): CalEvent | null {
 	if (e.status === 'cancelled' || !e.id) return null;
 	// a declined room booking (resource said no) must not show up in the resource calendar
 	if (isResourceId(rowId) && e.attendees?.some((a) => (a.self || a.email === rowId) && a.responseStatus === 'declined')) return null;
-	const start = (e.start?.date ?? e.start?.dateTime ?? '').slice(0, 10);
+	const start = dayOf(e.start);
 	let end: string;
 	if (e.end?.date) end = e.end.date;
 	else if (e.end?.dateTime) {
-		const d = e.end.dateTime.slice(0, 10);
-		end = /T00:00:00/.test(e.end.dateTime) ? d : addDays(d, 1);
+		const d = localDay(e.end.dateTime);
+		end = localTime(e.end.dateTime) === '00:00' ? d : addDays(d, 1);
 	} else end = addDays(start, 1);
 	if (!start) return null;
 	if (end <= start) end = addDays(start, 1);
@@ -181,7 +190,7 @@ export async function resolveOrganizer(rowId: string, eventId: string) {
 	if (!isResourceId(rowId)) return { calendarId: await resolveCalendarId(rowId), eventId, rowKey: rowId };
 	const api = calendar();
 	const copy = (await api.events.get({ calendarId: await resolveCalendarId(rowId), eventId })).data;
-	const day = (copy.start?.dateTime ?? copy.start?.date ?? '').slice(0, 10);
+	const day = dayOf(copy.start);
 	if (!copy.iCalUID || !day) throw new Error('Event cannot be traced to its organizer');
 	const { meta } = await loadMeta();
 	for (const row of meta.rows.filter((r) => r.kind === 'calendar')) {
@@ -198,7 +207,7 @@ export async function resolveOrganizer(rowId: string, eventId: string) {
 			timeMin: new Date(t - 86_400_000).toISOString(),
 			timeMax: new Date(t + 2 * 86_400_000).toISOString()
 		});
-		const hit = inst.data.items?.find((i) => (i.start?.dateTime ?? i.start?.date ?? '').slice(0, 10) === day);
+		const hit = inst.data.items?.find((i) => dayOf(i.start) === day);
 		if (hit?.id) return { calendarId: cid, eventId: hit.id, rowKey: key };
 	}
 	throw new Error('Organizer event not found in the configured calendars');

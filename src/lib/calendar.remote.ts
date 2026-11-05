@@ -5,14 +5,17 @@ import type { EventDetail } from '#lib/types';
 import {
 	addDays,
 	calendar,
+	dayOf,
 	freshRows,
+	localDay,
+	localTime,
+	TIME_ZONE,
 	listEvents,
 	loadMeta,
 	resolveCalendarId,
 	resolveOrganizer
 } from '#lib/server/google';
 
-const TIME_ZONE = 'Europe/Lisbon';
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Rows, groups and colours (resource calendars discovered dynamically). */
@@ -62,9 +65,9 @@ export const getEvent = query(
 						}
 					}
 				}
-				const start = (ev.start?.date ?? ev.start?.dateTime ?? '').slice(0, 10);
+				const start = dayOf(ev.start);
 				const allDay = !!ev.start?.date;
-				const end = allDay ? ev.end!.date! : (ev.end?.dateTime ?? ev.start?.dateTime ?? '').slice(0, 10);
+				const end = allDay ? ev.end!.date! : localDay(ev.end?.dateTime ?? ev.start?.dateTime);
 				return {
 					id: ev.id!,
 					linkId: ev.iCalUID ?? ev.id!,
@@ -75,8 +78,8 @@ export const getEvent = query(
 					status: ev.status === 'tentative' ? 'tentative' : 'confirmed',
 					description: ev.description ?? '',
 					allDay,
-					startTime: allDay ? '' : (ev.start?.dateTime ?? '').slice(11, 16),
-					endTime: allDay ? '' : (ev.end?.dateTime ?? '').slice(11, 16),
+					startTime: allDay ? '' : localTime(ev.start!.dateTime!),
+					endTime: allDay ? '' : localTime(ev.end!.dateTime!),
 					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!)
 				};
 			} catch {
@@ -124,8 +127,8 @@ export const saveEvent = command(saveSchema, async (input) => {
 		? await api.patch({ calendarId, eventId: input.id, requestBody, sendUpdates: 'none' })
 		: await api.insert({ calendarId, requestBody, sendUpdates: 'none' });
 	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
-	const oldStart = (before?.start?.date ?? before?.start?.dateTime ?? input.start).slice(0, 10);
-	const oldEnd = (before?.end?.date ?? before?.end?.dateTime ?? input.end).slice(0, 10);
+	const oldStart = (dayOf(before?.start) || input.start);
+	const oldEnd = (dayOf(before?.end) || input.end);
 	const fresh = await freshRows(
 		[input.calendar, ...oldRooms, ...input.resourceIds],
 		[oldStart, input.start].sort()[0],
@@ -143,8 +146,8 @@ export const deleteEvent = command(
 		const before = (await api.get({ calendarId, eventId: id })).data;
 		await api.delete({ calendarId, eventId: id, sendUpdates: 'none' });
 		const rooms = (before.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
-		const s = (before.start?.date ?? before.start?.dateTime ?? '').slice(0, 10);
-		const e = (before.end?.date ?? before.end?.dateTime ?? s).slice(0, 10);
+		const s = dayOf(before.start);
+		const e = (dayOf(before.end) || s);
 		return { fresh: await freshRows([key, ...rooms], s, e) };
 	}
 );
@@ -170,8 +173,8 @@ export const resolveConflict = command(
 		const rest = (ev.attendees ?? []).filter((a) => a.email !== rowId);
 		const attendees = action === 'release' ? rest : [...rest.filter((a) => a.email !== toResourceId), { email: toResourceId!, resource: true }];
 		await api.patch({ calendarId: target.calendarId, eventId: target.eventId, requestBody: { attendees }, sendUpdates: 'none' });
-		const s = (ev.start?.date ?? ev.start?.dateTime ?? '').slice(0, 10);
-		const e = (ev.end?.date ?? ev.end?.dateTime ?? s).slice(0, 10);
+		const s = dayOf(ev.start);
+		const e = (dayOf(ev.end) || s);
 		return { fresh: await freshRows([target.rowKey, rowId, ...(toResourceId ? [toResourceId] : [])], s, e) };
 	}
 );
