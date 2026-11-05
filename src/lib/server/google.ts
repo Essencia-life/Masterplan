@@ -163,7 +163,10 @@ export function normalize(e: calendar_v3.Schema$Event, rowId: string): CalEvent 
 		start,
 		end,
 		status: e.status === 'tentative' ? 'tentative' : 'confirmed',
-		description: e.description ?? ''
+		description: e.description ?? '',
+		declinedRooms: isResourceId(rowId)
+			? undefined
+			: (e.attendees ?? []).filter((a) => a.resource && a.responseStatus === 'declined').map((a) => a.email!)
 	};
 }
 

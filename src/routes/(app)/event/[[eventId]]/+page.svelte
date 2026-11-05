@@ -119,26 +119,31 @@
 	$effect(() => {
 		if (!timeline.meta || !form.start || !form.end) return;
 		const groupIds = new Set(form.resourceIds.map((id) => timeline.meta!.rows.find((r) => r.id === id)?.groupId));
-		const ids = timeline.meta.rows.filter((r) => r.kind === 'resource' && (form.resourceIds.includes(r.id) || groupIds.has(r.groupId))).map((r) => r.id);
+		// with conflicts every room is a possible move target, so all of them are loaded
+		const all = conflicts.length > 0;
+		const ids = timeline.meta.rows.filter((r) => r.kind === 'resource' && (all || form.resourceIds.includes(r.id) || groupIds.has(r.groupId))).map((r) => r.id);
 		const a = sD,
 			b = eD;
 		if (ids.length) untrack(() => timeline.ensure(ids, a, b));
 	});
 
-	/** rooms of the same group that are free for the conflicting booking and not wanted by this booking */
+	/** every room that is free for the conflicting booking and not wanted by this booking, grouped; same group first */
 	function alternatives(c: Conflict) {
 		const rows = timeline.meta?.rows ?? [];
-		const group = rows.find((r) => r.id === c.rid)?.groupId;
+		const own = rows.find((r) => r.id === c.rid)?.groupId;
 		const s0 = isoToDay(c.ev.start),
 			e0 = isoToDay(c.ev.end);
-		return rows.filter(
+		const free = rows.filter(
 			(r) =>
 				r.kind === 'resource' &&
-				r.groupId === group &&
 				r.id !== c.rid &&
 				!form.resourceIds.includes(r.id) &&
 				!timeline.eventsOf(r.id).some((e) => e.linkId !== c.ev.linkId && isoToDay(e.start) < e0 && isoToDay(e.end) > s0)
 		);
+		return (timeline.meta?.groups ?? [])
+			.map((g) => ({ label: g.label, own: g.id === own, items: free.filter((r) => r.groupId === g.id) }))
+			.filter((g) => g.items.length)
+			.sort((a, b) => Number(b.own) - Number(a.own));
 	}
 
 	async function resolve(c: Conflict, action: 'release' | 'move') {
@@ -310,10 +315,22 @@
 				<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
 				<div class="flex flex-wrap items-center gap-2">
 					<Button size="xs" color="alternative" disabled={resolving === c.key} onclick={() => resolve(c, 'release')}>Release room</Button>
-					<Select class="!w-auto flex-1" size="sm" placeholder="Move to…" items={alts.map((r) => ({ value: r.id, name: r.label }))} bind:value={moveTo[c.key]} disabled={!alts.length} />
+					<select
+						class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60"
+						bind:value={moveTo[c.key]}
+						disabled={!alts.length}
+						aria-label="Move the room reservation to"
+					>
+						<option value={undefined} disabled>Move to…</option>
+						{#each alts as g (g.label)}
+							<optgroup label={g.label}>
+								{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}
+							</optgroup>
+						{/each}
+					</select>
 					<Button size="xs" disabled={!moveTo[c.key] || resolving === c.key} onclick={() => resolve(c, 'move')}>Move</Button>
 				</div>
-				{#if !alts.length}<p class="text-xs text-muted">No free alternative room in this group.</p>{/if}
+				{#if !alts.length}<p class="text-xs text-muted">No free room for these dates.</p>{/if}
 			</div>
 		{/each}
 	{:else}

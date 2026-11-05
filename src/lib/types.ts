@@ -25,6 +25,8 @@ export type CalEvent = {
 	end: string;
 	status: 'confirmed' | 'tentative' | 'cancelled';
 	description: string;
+	/** resource calendar ids that declined this booking (only known on the organizer's calendar) */
+	declinedRooms?: string[];
 };
 
 /** Result of a mutation: the fresh state of every row it touched (single-flight, no refetch round trip). */

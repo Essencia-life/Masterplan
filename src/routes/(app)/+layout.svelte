@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack, type Snippet } from 'svelte';
-	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff } from '@lucide/svelte';
+	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
 	import { timeline } from '#lib/timeline.svelte';
 	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
@@ -218,7 +218,8 @@
 		if (!canHover || !canHover.matches || drag) return (tip = null);
 		const range = `${it.ev.start} – ${dayToIso(it.e - 1)}`;
 		const rooms = (linkCount.get(it.ev.linkId) ?? 1) - 1;
-		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · tentative' : ''}`;
+		const declined = (it.ev.declinedRooms ?? []).map((id) => timeline.meta?.rows.find((r) => r.id === id)?.label ?? id);
+		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · tentative' : ''}${declined.length ? ` · declined: ${declined.join(', ')}` : ''}${it.ev.description.trim() ? ' · has note' : ''}`;
 		tip = { text, x: Math.min(e.clientX + 12, innerWidth - 260), y: e.clientY + 16 };
 	}
 
@@ -422,6 +423,12 @@
 											onmouseenter={() => canHover && canHover.matches && (hot = it.ev.linkId)}
 											onmouseleave={() => ((hot = null), (tip = null))}
 										>
+											{#if it.ev.declinedRooms?.length || it.ev.description.trim()}
+												<span class="evt-icons" aria-hidden="true">
+													{#if it.ev.declinedRooms?.length}<TriangleAlert size={11} />{/if}
+													{#if it.ev.description.trim()}<StickyNote size={11} />{/if}
+												</span>
+											{/if}
 											{#if it.e - it.s <= 1}
 												<span class="short-title">{it.ev.title}</span>
 											{:else}
@@ -499,6 +506,15 @@
 		touch-action: pan-x pan-y;
 	}
 	/* one-day bars: small text that wraps anywhere so the title stays readable */
+	.evt-icons {
+		position: absolute;
+		top: 2px;
+		right: 3px;
+		display: flex;
+		gap: 2px;
+		z-index: 1;
+		filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.55));
+	}
 	.short-title {
 		display: -webkit-box;
 		-webkit-box-orient: vertical;
