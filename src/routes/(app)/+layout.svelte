@@ -4,7 +4,7 @@
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff } from '@lucide/svelte';
 	import { timeline } from '#lib/timeline.svelte';
-	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonPath, moonPhase } from '#lib/time';
+	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
 
 	let { children }: { children: Snippet } = $props();
@@ -328,13 +328,15 @@
 							{/each}
 						</div>
 					</div>
-					<div class="flex" style="height:26px">
+					<div class="flex" style="height:32px">
 						<div class="sticky left-0 z-10 flex shrink-0 items-center bg-surface px-2 text-[11px] text-muted border-r border-line" style="width:{LABW}px">Moon</div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								{@const p = moonPath(moonPhase(d))}
-								<div class="absolute top-0 flex h-full items-center justify-center border-l border-line-soft" class:month-start={dom(d) === 1} style="left:{d * DAYW}px;width:{DAYW}px">
-									<svg width="16" height="16" viewBox="-9 -9 18 18" aria-hidden="true">
+								{@const key = moonKey(d)}
+								<div class="absolute top-0 flex h-full items-center justify-center border-l border-line-soft" class:month-start={dom(d) === 1} style="left:{d * DAYW}px;width:{DAYW}px" title={key || undefined}>
+									<svg width={key ? 26 : 19} height={key ? 26 : 19} viewBox="-10 -10 20 20" aria-label={key || undefined} aria-hidden={key ? undefined : true}>
+										{#if key}<circle r="9.4" fill="none" stroke="var(--color-amber)" stroke-width="1.2" />{/if}
 										<circle r="8" fill="var(--app-surface-2)" stroke="var(--app-line)" />
 										{#if p === 'full'}<circle r="8" fill="var(--color-amber)" />{:else if p !== 'new'}<path d={p} fill="var(--color-amber)" />{/if}
 									</svg>
@@ -345,7 +347,7 @@
 				</div>
 
 				<!-- column shading (weekends / today) for the whole body -->
-				<div class="pointer-events-none absolute bottom-0 z-0" style="top:102px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
+				<div class="pointer-events-none absolute bottom-0 z-0" style="top:108px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
 					{#each days as d (d)}
 						{#if dom(d) === 1}
 							<div class="absolute top-0 h-full border-l border-line" style="left:{d * DAYW}px"></div>

@@ -20,6 +20,15 @@ export function moonPhase(day: number) {
 	return f < 0 ? f + 1 : f;
 }
 
+/** "New moon" / "Full moon" on the day the phase is exact (within half a day), otherwise '' */
+export function moonKey(day: number) {
+	const f = moonPhase(day);
+	const h = 0.5 / SYNODIC;
+	if (f < h || f > 1 - h) return 'New moon';
+	if (Math.abs(f - 0.5) < h) return 'Full moon';
+	return '';
+}
+
 /** SVG path for the lit part of the moon disc (northern hemisphere), r = radius around (0,0). */
 export function moonPath(f: number, r = 8) {
 	const k = Math.cos(2 * Math.PI * f);
