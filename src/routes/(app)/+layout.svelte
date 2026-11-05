@@ -218,7 +218,15 @@
 	let tip = $state<{ text: string; x: number; y: number } | null>(null);
 	function showTip(e: MouseEvent, it: Placed) {
 		if (!canHover || !canHover.matches || drag) return (tip = null);
-		const range = `${it.ev.start} – ${dayToIso(it.e - 1)}`;
+		const { fromLocal: f, toLocal: t } = it.ev;
+		let range: string;
+		if (f && t) {
+			// timed: show the clock times; the date only once when it is the same day
+			range = f.slice(0, 10) === t.slice(0, 10) ? `${f.slice(0, 10)} ${f.slice(11)}–${t.slice(11)}` : `${f.slice(0, 10)} ${f.slice(11)} – ${t.slice(0, 10)} ${t.slice(11)}`;
+		} else {
+			const last = dayToIso(it.e - 1);
+			range = last === it.ev.start ? it.ev.start : `${it.ev.start} – ${last}`;
+		}
 		const rooms = (linkCount.get(it.ev.linkId) ?? 1) - 1;
 		const declined = (it.ev.declinedRooms ?? []).map((id) => timeline.meta?.rows.find((r) => r.id === id)?.label ?? id);
 		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · tentative' : ''}${declined.length ? ` · declined: ${declined.join(', ')}` : ''}${it.ev.description.trim() ? ' · has note' : ''}`;
