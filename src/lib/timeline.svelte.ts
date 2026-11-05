@@ -25,15 +25,6 @@ function writeList(key: string, values: Iterable<string>) {
 	}
 }
 
-function readOrder(): Record<string, string[]> {
-	try {
-		const v = JSON.parse(localStorage.getItem('rowOrder') ?? '{}');
-		return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-	} catch {
-		return {};
-	}
-}
-
 class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
@@ -48,33 +39,28 @@ class Timeline {
 	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
 	hidden = new SvelteSet<string>(readList('hiddenRows') ?? []);
 
-	/** manual row order per group (row ids), remembered per browser */
-	order = $state<Record<string, string[]>>(readOrder());
+	/** manual group order (group ids), remembered per browser */
+	groupOrder = $state<string[]>(readList('groupOrder') ?? []);
 
-	/** rows of one group in the user's order; rows without a stored position keep their default order at the end */
-	orderRows<T extends { id: string }>(groupId: string, rows: T[]): T[] {
-		const stored = this.order[groupId];
-		if (!stored) return rows;
+	/** groups in the user's order; groups without a stored position keep their default order at the end */
+	orderGroups<T extends { id: string }>(groups: T[]): T[] {
+		if (!this.groupOrder.length) return groups;
 		const pos = (id: string) => {
-			const i = stored.indexOf(id);
+			const i = this.groupOrder.indexOf(id);
 			return i < 0 ? Number.MAX_SAFE_INTEGER : i;
 		};
-		return [...rows].sort((a, b) => pos(a.id) - pos(b.id));
+		return [...groups].sort((a, b) => pos(a.id) - pos(b.id));
 	}
 
-	/** put `rowId` before (or after) `targetId`; both must be rows of `groupId` (given in current display order) */
-	moveRow(groupId: string, displayed: string[], rowId: string, targetId: string, after: boolean) {
-		if (rowId === targetId) return;
-		const list = displayed.filter((id) => id !== rowId);
+	/** put group `id` before (or after) `targetId`; `displayed` is the current display order */
+	moveGroup(displayed: string[], id: string, targetId: string, after: boolean) {
+		if (id === targetId) return;
+		const list = displayed.filter((x) => x !== id);
 		const at = list.indexOf(targetId);
 		if (at < 0) return;
-		list.splice(after ? at + 1 : at, 0, rowId);
-		this.order[groupId] = list;
-		try {
-			localStorage.setItem('rowOrder', JSON.stringify(this.order));
-		} catch {
-			// storage unavailable, keep in memory only
-		}
+		list.splice(after ? at + 1 : at, 0, id);
+		this.groupOrder = list;
+		writeList('groupOrder', list);
 	}
 
 	toggleRow(rowId: string) {
