@@ -7,7 +7,7 @@
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { calendarIdFromSlug } from '#lib/calendar-id';
 	import { timeline } from '#lib/timeline.svelte';
-	import { TODAY, dayToIso, isoToDay } from '#lib/time';
+	import { TODAY, dayToIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
 
 	const eventId = $derived(page.params.eventId);
@@ -110,7 +110,23 @@
 		!form.end ? 0 : !form.allDay && form.endTime === '00:00' && form.end > form.start ? isoToDay(form.end) : isoToDay(form.end) + 1
 	);
 	type Conflict = { key: string; rid: string; label: string; ev: CalEvent };
-	const overlaps = (e: CalEvent) => isoToDay(e.start) < eD && isoToDay(e.end) > sD;
+	/** time span in wall-clock minutes: exact for timed events, whole days for all-day ones */
+	const spanOf = (e: CalEvent): [number, number] =>
+		e.fromLocal && e.toLocal
+			? [toMinutes(e.fromLocal.slice(0, 10), e.fromLocal.slice(11)), toMinutes(e.toLocal.slice(0, 10), e.toLocal.slice(11))]
+			: [isoToDay(e.start) * 1440, isoToDay(e.end) * 1440];
+	const formSpan = $derived<[number, number]>(
+		!form.start || !form.end
+			? [0, 0]
+			: form.allDay
+				? [isoToDay(form.start) * 1440, (isoToDay(form.end) + 1) * 1440]
+				: [toMinutes(form.start, form.startTime), toMinutes(form.end, form.endTime)]
+	);
+	const overlaps = (e: CalEvent) => {
+		const [a, b] = spanOf(e);
+		return a < formSpan[1] && b > formSpan[0];
+	};
+	const timeLabel = (e: CalEvent) => (e.fromLocal && e.toLocal ? ` ${e.fromLocal.slice(11)}–${e.toLocal.slice(11)}` : '');
 	const isSelf = (e: CalEvent) => e.id === form.id || (!!form.linkId && e.linkId === form.linkId);
 	const conflicts = $derived.by(() => {
 		const out: Conflict[] = [];
@@ -137,14 +153,13 @@
 	function alternatives(c: Conflict) {
 		const rows = timeline.meta?.rows ?? [];
 		const own = rows.find((r) => r.id === c.rid)?.groupId;
-		const s0 = isoToDay(c.ev.start),
-			e0 = isoToDay(c.ev.end);
+		const [s0, e0] = spanOf(c.ev);
 		const free = rows.filter(
 			(r) =>
 				r.kind === 'resource' &&
 				r.id !== c.rid &&
 				!form.resourceIds.includes(r.id) &&
-				!timeline.eventsOf(r.id).some((e) => e.linkId !== c.ev.linkId && isoToDay(e.start) < e0 && isoToDay(e.end) > s0)
+				!timeline.eventsOf(r.id).some((e) => e.linkId !== c.ev.linkId && spanOf(e)[0] < e0 && spanOf(e)[1] > s0)
 		);
 		return (timeline.meta?.groups ?? [])
 			.map((g) => ({ label: g.label, own: g.id === own, items: free.filter((r) => r.groupId === g.id) }))
@@ -318,7 +333,7 @@
 		{#each conflicts as c (c.key)}
 			{@const alts = alternatives(c)}
 			<div class="space-y-2 rounded-lg border border-line p-3">
-				<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
+				<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
 				<div class="flex flex-wrap items-center gap-2">
 					<Button size="xs" color="alternative" disabled={resolving === c.key} onclick={() => resolve(c, 'release')}>Release room</Button>
 					<select

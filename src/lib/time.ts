@@ -5,6 +5,12 @@ export const BASE = Date.UTC(now.getUTCFullYear() - 1, 0, 1) / DAY_MS;
 export const N_DAYS = 1500;
 export const TODAY = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY_MS) - BASE;
 
+/** minutes since BASE midnight for a local date + 'HH:mm' (wall clock, no time zone maths) */
+export const toMinutes = (isoDate: string, hhmm = '00:00') => {
+	const [h, m] = hhmm.split(':').map(Number);
+	return isoToDay(isoDate) * 1440 + h * 60 + m;
+};
+
 export const dayToDate = (i: number) => new Date((BASE + i) * DAY_MS);
 export const dayToIso = (i: number) => dayToDate(i).toISOString().slice(0, 10);
 export const isoToDay = (iso: string) => Math.round(Date.parse(iso.slice(0, 10) + 'T00:00:00Z') / DAY_MS) - BASE;

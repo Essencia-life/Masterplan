@@ -25,6 +25,9 @@ export type CalEvent = {
 	end: string;
 	status: 'confirmed' | 'tentative' | 'cancelled';
 	description: string;
+	/** exact local times (YYYY-MM-DDTHH:mm), only for timed events; all-day events occupy whole days */
+	fromLocal?: string;
+	toLocal?: string;
 	/** resource calendar ids that declined this booking (only known on the organizer's calendar) */
 	declinedRooms?: string[];
 };
