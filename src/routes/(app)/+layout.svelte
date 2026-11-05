@@ -419,7 +419,11 @@
 											onmouseenter={() => canHover && canHover.matches && (hot = it.ev.linkId)}
 											onmouseleave={() => ((hot = null), (tip = null))}
 										>
-											<span class="sticky inline-block max-w-full truncate px-2" style="left:{LABW + 4}px">{it.ev.title}</span>
+											{#if it.e - it.s <= 1}
+												<span class="short-title">{it.ev.title}</span>
+											{:else}
+												<span class="sticky inline-block max-w-full truncate px-2" style="left:{LABW + 4}px">{it.ev.title}</span>
+											{/if}
 										</button>
 									{/each}
 								</div>
@@ -490,6 +494,25 @@
 	.evt {
 		background: color-mix(in oklab, var(--c) 88%, black);
 		touch-action: pan-x pan-y;
+	}
+	/* one-day bars: small text that wraps anywhere so the title stays readable */
+	.short-title {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
+		padding: 0 3px;
+		font-size: 9.5px;
+		line-height: 10px;
+		word-break: break-all;
+		white-space: normal;
+		margin-top: 1px;
+	}
+	.evt:has(.short-title) {
+		height: 32px;
+		display: flex;
+		align-items: center;
 	}
 	.evt.hatched {
 		background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.18) 0 4px, transparent 4px 9px);
