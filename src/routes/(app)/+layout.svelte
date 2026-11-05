@@ -519,7 +519,7 @@
 		gap: 3px;
 		padding: 2px 4px;
 		border-radius: 999px;
-		background: rgb(20 14 8 / 0.62);
+		background: rgb(20 14 8 / 0.85);
 		color: #fff;
 		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35);
 	}
@@ -536,9 +536,6 @@
 		align-self: flex-end;
 		margin-bottom: 2px;
 		flex-shrink: 0;
-	}
-	.evt-icons :global(.lucide-triangle-alert) {
-		color: var(--color-amber);
 	}
 	.short-title {
 		display: -webkit-box;
