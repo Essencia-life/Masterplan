@@ -1,6 +1,6 @@
 import { google, type calendar_v3 } from 'googleapis';
 import * as env from '$app/env/private';
-import type { CalEvent, CalendarMeta, GroupInfo, MainKey, RowInfo } from '#lib/types';
+import type { CalEvent, CalendarMeta, Fresh, GroupInfo, MainKey, RowInfo } from '#lib/types';
 import { MAIN_KEYS } from '#lib/types';
 
 const CALENDAR_IDS: Record<MainKey, () => string | undefined> = {
@@ -202,7 +202,7 @@ export async function listEvents(rowId: string, timeMin: string, timeMax: string
  * instance that starts on the same day).
  */
 export async function resolveOrganizer(rowId: string, eventId: string) {
-	if (isMainKey(rowId)) return { calendarId: await resolveCalendarId(rowId), eventId };
+	if (isMainKey(rowId)) return { calendarId: await resolveCalendarId(rowId), eventId, rowKey: rowId as string };
 	const api = calendar();
 	const copy = (await api.events.get({ calendarId: await resolveCalendarId(rowId), eventId })).data;
 	const day = (copy.start?.dateTime ?? copy.start?.date ?? '').slice(0, 10);
@@ -213,7 +213,7 @@ export async function resolveOrganizer(rowId: string, eventId: string) {
 		const found = await api.events.list({ calendarId: cid, iCalUID: copy.iCalUID }).catch(() => null);
 		const master = found?.data.items?.[0];
 		if (!master?.id) continue;
-		if (!copy.recurringEventId) return { calendarId: cid, eventId: master.id };
+		if (!copy.recurringEventId) return { calendarId: cid, eventId: master.id, rowKey: key as string };
 		const t = Date.parse(day + 'T00:00:00Z');
 		const inst = await api.events.instances({
 			calendarId: cid,
@@ -222,9 +222,18 @@ export async function resolveOrganizer(rowId: string, eventId: string) {
 			timeMax: new Date(t + 2 * 86_400_000).toISOString()
 		});
 		const hit = inst.data.items?.find((i) => (i.start?.dateTime ?? i.start?.date ?? '').slice(0, 10) === day);
-		if (hit?.id) return { calendarId: cid, eventId: hit.id };
+		if (hit?.id) return { calendarId: cid, eventId: hit.id, rowKey: key as string };
 	}
 	throw new Error('Organizer event not found in the configured calendars');
+}
+
+/** Fresh events of the touched rows, fetched inside the mutation request. */
+export async function freshRows(rowIds: string[], fromIso: string, toIso: string): Promise<Fresh> {
+	const ids = [...new Set(rowIds)];
+	const from = addDays(fromIso, -1);
+	const to = addDays(toIso, 1);
+	const lists = await Promise.all(ids.map((id) => listEvents(id, from, to).catch(() => [] as CalEvent[])));
+	return { from, to, rows: Object.fromEntries(ids.map((id, i) => [id, lists[i]])) };
 }
 
 export { addDays };

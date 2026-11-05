@@ -28,6 +28,9 @@ export type CalEvent = {
 	description: string;
 };
 
+/** Result of a mutation: the fresh state of every row it touched (single-flight, no refetch round trip). */
+export type Fresh = { from: string; to: string; rows: Record<string, CalEvent[]> };
+
 export type EventDetail = {
 	id: string;
 	linkId: string;

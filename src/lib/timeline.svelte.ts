@@ -1,7 +1,7 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { getCalendars, getEvents } from '#lib/calendar.remote';
-import type { CalEvent, CalendarMeta } from '#lib/types';
-import { dayToIso } from '#lib/time';
+import type { CalEvent, CalendarMeta, Fresh } from '#lib/types';
+import { dayToIso, isoToDay } from '#lib/time';
 
 export const CHUNK = 90;
 const key = (rowId: string, chunk: number) => `${rowId}|${chunk}`;
@@ -39,6 +39,27 @@ class Timeline {
 			for (const e of list) seen.set(e.id, e);
 		}
 		return [...seen.values()];
+	}
+
+	/**
+	 * Single-flight: merge the rows a mutation returned into the cache, in place.
+	 * Nothing is cleared, so the timeline does not flicker or refetch.
+	 */
+	applyFresh(fresh: Fresh) {
+		const wFrom = isoToDay(fresh.from);
+		const wTo = isoToDay(fresh.to);
+		const overlapsWindow = (e: CalEvent) => isoToDay(e.start) < wTo && isoToDay(e.end) > wFrom;
+		for (const [rowId, events] of Object.entries(fresh.rows)) {
+			for (const k of [...this.chunks.keys()]) {
+				if (!k.startsWith(rowId + '|')) continue;
+				const c = Number(k.split('|')[1]);
+				const cFrom = c * CHUNK;
+				const cTo = cFrom + CHUNK;
+				const inChunk = (e: CalEvent) => isoToDay(e.start) < cTo && isoToDay(e.end) > cFrom;
+				const kept = this.chunks.get(k)!.filter((e) => !overlapsWindow(e));
+				this.chunks.set(k, [...kept, ...events.filter(inChunk)]);
+			}
+		}
 	}
 
 	invalidate() {

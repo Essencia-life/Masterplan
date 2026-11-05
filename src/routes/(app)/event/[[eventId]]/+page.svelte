@@ -132,8 +132,8 @@
 		resolving = c.key;
 		saveError = null;
 		try {
-			await resolveConflict({ rowId: c.rid, eventId: c.ev.id, action, toResourceId: action === 'move' ? moveTo[c.key] : undefined });
-			timeline.invalidate();
+			const res = await resolveConflict({ rowId: c.rid, eventId: c.ev.id, action, toResourceId: action === 'move' ? moveTo[c.key] : undefined });
+			timeline.applyFresh(res.fresh);
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'Could not update the booking';
 		} finally {
@@ -159,7 +159,7 @@
 		busy = true;
 		saveError = null;
 		try {
-			await saveEvent({
+			const res = await saveEvent({
 				id: form.id,
 				calendar: form.calendar,
 				title: form.title,
@@ -172,7 +172,7 @@
 				description: form.description,
 				resourceIds: form.resourceIds
 			});
-			timeline.invalidate();
+			timeline.applyFresh(res.fresh);
 			await close();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'Could not save';
@@ -184,8 +184,8 @@
 		if (!form.id || !confirm('Delete this booking?')) return;
 		busy = true;
 		try {
-			await deleteEvent({ calendar: form.calendar, id: form.id });
-			timeline.invalidate();
+			const res = await deleteEvent({ calendar: form.calendar, id: form.id });
+			timeline.applyFresh(res.fresh);
 			await close();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'Could not delete';

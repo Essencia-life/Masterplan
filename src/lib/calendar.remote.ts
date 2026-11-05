@@ -5,6 +5,7 @@ import type { EventDetail } from '#lib/types';
 import {
 	addDays,
 	calendar,
+	freshRows,
 	isMainKey,
 	listEvents,
 	loadMeta,
@@ -117,17 +118,33 @@ export const saveEvent = command(saveSchema, async (input) => {
 		attendees: input.resourceIds.map((email) => ({ email, resource: true }))
 	};
 	const api = calendar().events;
+	// rows/dates of the previous state also change (rooms released, event moved)
+	const before = input.id ? (await api.get({ calendarId, eventId: input.id })).data : null;
 	const res = input.id
 		? await api.patch({ calendarId, eventId: input.id, requestBody, sendUpdates: 'none' })
 		: await api.insert({ calendarId, requestBody, sendUpdates: 'none' });
-	return { id: res.data.id!, calendar: input.calendar };
+	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
+	const oldStart = (before?.start?.date ?? before?.start?.dateTime ?? input.start).slice(0, 10);
+	const oldEnd = (before?.end?.date ?? before?.end?.dateTime ?? input.end).slice(0, 10);
+	const fresh = await freshRows(
+		[input.calendar, ...oldRooms, ...input.resourceIds],
+		[oldStart, input.start].sort()[0],
+		[oldEnd, input.end].sort().at(-1)!
+	);
+	return { id: res.data.id!, calendar: input.calendar, fresh };
 });
 
 export const deleteEvent = command(
 	z.object({ calendar: z.string().refine(isMainKey), id: z.string() }),
 	async ({ calendar: key, id }) => {
 		const calendarId = await resolveCalendarId(key);
-		await calendar().events.delete({ calendarId, eventId: id, sendUpdates: 'none' });
+		const api = calendar().events;
+		const before = (await api.get({ calendarId, eventId: id })).data;
+		await api.delete({ calendarId, eventId: id, sendUpdates: 'none' });
+		const rooms = (before.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
+		const s = (before.start?.date ?? before.start?.dateTime ?? '').slice(0, 10);
+		const e = (before.end?.date ?? before.end?.dateTime ?? s).slice(0, 10);
+		return { fresh: await freshRows([key, ...rooms], s, e) };
 	}
 );
 
@@ -151,6 +168,9 @@ export const resolveConflict = command(
 		const ev = (await api.get(target)).data;
 		const rest = (ev.attendees ?? []).filter((a) => a.email !== rowId);
 		const attendees = action === 'release' ? rest : [...rest.filter((a) => a.email !== toResourceId), { email: toResourceId!, resource: true }];
-		await api.patch({ ...target, requestBody: { attendees }, sendUpdates: 'none' });
+		await api.patch({ calendarId: target.calendarId, eventId: target.eventId, requestBody: { attendees }, sendUpdates: 'none' });
+		const s = (ev.start?.date ?? ev.start?.dateTime ?? '').slice(0, 10);
+		const e = (ev.end?.date ?? ev.end?.dateTime ?? s).slice(0, 10);
+		return { fresh: await freshRows([target.rowKey, rowId, ...(toResourceId ? [toResourceId] : [])], s, e) };
 	}
 );
