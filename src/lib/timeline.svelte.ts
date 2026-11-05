@@ -25,6 +25,15 @@ function writeList(key: string, values: Iterable<string>) {
 	}
 }
 
+function readOrder(): Record<string, string[]> {
+	try {
+		const v = JSON.parse(localStorage.getItem('rowOrder') ?? '{}');
+		return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+	} catch {
+		return {};
+	}
+}
+
 class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
@@ -38,6 +47,35 @@ class Timeline {
 	private initialised = false;
 	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
 	hidden = new SvelteSet<string>(readList('hiddenRows') ?? []);
+
+	/** manual row order per group (row ids), remembered per browser */
+	order = $state<Record<string, string[]>>(readOrder());
+
+	/** rows of one group in the user's order; rows without a stored position keep their default order at the end */
+	orderRows<T extends { id: string }>(groupId: string, rows: T[]): T[] {
+		const stored = this.order[groupId];
+		if (!stored) return rows;
+		const pos = (id: string) => {
+			const i = stored.indexOf(id);
+			return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+		};
+		return [...rows].sort((a, b) => pos(a.id) - pos(b.id));
+	}
+
+	/** put `rowId` before (or after) `targetId`; both must be rows of `groupId` (given in current display order) */
+	moveRow(groupId: string, displayed: string[], rowId: string, targetId: string, after: boolean) {
+		if (rowId === targetId) return;
+		const list = displayed.filter((id) => id !== rowId);
+		const at = list.indexOf(targetId);
+		if (at < 0) return;
+		list.splice(after ? at + 1 : at, 0, rowId);
+		this.order[groupId] = list;
+		try {
+			localStorage.setItem('rowOrder', JSON.stringify(this.order));
+		} catch {
+			// storage unavailable, keep in memory only
+		}
+	}
 
 	toggleRow(rowId: string) {
 		if (this.hidden.has(rowId)) this.hidden.delete(rowId);

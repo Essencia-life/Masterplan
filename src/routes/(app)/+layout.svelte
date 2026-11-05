@@ -36,7 +36,10 @@
 		(timeline.meta?.groups ?? []).map((g) => ({
 			...g,
 			open: timeline.expanded.has(g.id),
-			rows: (timeline.meta?.rows ?? []).filter((r) => r.groupId === g.id)
+			rows: timeline.orderRows(
+				g.id,
+				(timeline.meta?.rows ?? []).filter((r) => r.groupId === g.id)
+			)
 		}))
 	);
 	const openRowIds = $derived(groups.filter((g) => g.open).flatMap((g) => g.rows.filter((r) => r.available && !timeline.hidden.has(r.id)).map((r) => r.id)));
@@ -192,6 +195,24 @@
 	// while a long press selection is active the page must not scroll
 	function blockScroll(e: TouchEvent) {
 		if (drag) e.preventDefault();
+	}
+
+	// ----- row reordering (native HTML drag & drop, within a group) -----
+	let dragRow = $state<{ id: string; groupId: string } | null>(null);
+	let dropAt = $state<{ id: string; after: boolean } | null>(null);
+	function rowDragOver(e: DragEvent, groupId: string, rowId: string) {
+		if (!dragRow || dragRow.groupId !== groupId) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		dropAt = { id: rowId, after: e.clientY > r.top + r.height / 2 };
+	}
+	function rowDrop(e: DragEvent, groupId: string) {
+		if (!dragRow || dragRow.groupId !== groupId || !dropAt) return;
+		e.preventDefault();
+		const g = groups.find((x) => x.id === groupId);
+		if (g) timeline.moveRow(groupId, g.rows.map((r) => r.id), dragRow.id, dropAt.id, dropAt.after);
+		dragRow = dropAt = null;
 	}
 
 	// ----- hover highlight of linked bars (fine pointers only) -----
@@ -356,10 +377,27 @@
 						{#each g.rows as row (row.id)}
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
-							<div class="relative flex border-b border-line-soft" data-row={row.writable ? row.id : undefined} style="height:{h}px">
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="relative flex border-b border-line-soft"
+								class:drop-before={dropAt?.id === row.id && !dropAt.after && dragRow?.id !== row.id}
+								class:drop-after={dropAt?.id === row.id && dropAt.after && dragRow?.id !== row.id}
+								class:opacity-50={dragRow?.id === row.id}
+								data-row={row.writable ? row.id : undefined}
+								style="height:{h}px"
+								ondragover={(e) => rowDragOver(e, g.id, row.id)}
+								ondrop={(e) => rowDrop(e, g.id)}
+							>
 								<button
 									data-label
-									class="sticky left-0 z-10 flex shrink-0 cursor-pointer items-start gap-2 border-r border-line bg-surface px-2 text-left text-sm leading-5"
+									draggable="true"
+									ondragstart={(e) => {
+										dragRow = { id: row.id, groupId: g.id };
+										e.dataTransfer?.setData('text/plain', row.id);
+										if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+									}}
+									ondragend={() => (dragRow = dropAt = null)}
+									class="sticky left-0 z-10 flex shrink-0 cursor-grab items-start gap-2 border-r border-line bg-surface px-2 text-left text-sm leading-5"
 									style="width:{LABW}px;padding-top:{PAD / 2 + 3}px"
 									title={timeline.hidden.has(row.id) ? `Show ${row.label}` : `Hide ${row.label}`}
 									aria-pressed={timeline.hidden.has(row.id)}
@@ -438,6 +476,12 @@
 	.btn-primary:hover {
 		background: var(--app-accent);
 		opacity: 0.9;
+	}
+	.drop-before {
+		box-shadow: inset 0 3px 0 var(--app-accent);
+	}
+	.drop-after {
+		box-shadow: inset 0 -3px 0 var(--app-accent);
 	}
 	.month-start {
 		border-left-color: var(--app-line);
