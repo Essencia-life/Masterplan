@@ -425,8 +425,8 @@
 										>
 											{#if it.ev.declinedRooms?.length || it.ev.description.trim()}
 												<span class="evt-icons" aria-hidden="true">
-													{#if it.ev.declinedRooms?.length}<TriangleAlert size={11} />{/if}
-													{#if it.ev.description.trim()}<StickyNote size={11} />{/if}
+													{#if it.ev.declinedRooms?.length}<TriangleAlert size={11} strokeWidth={2.5} />{/if}
+													{#if it.ev.description.trim()}<StickyNote size={11} strokeWidth={2.25} />{/if}
 												</span>
 											{/if}
 											{#if it.e - it.s <= 1}
@@ -509,11 +509,19 @@
 	.evt-icons {
 		position: absolute;
 		top: 2px;
-		right: 3px;
-		display: flex;
-		gap: 2px;
+		right: 2px;
 		z-index: 1;
-		filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.55));
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		padding: 2px 4px;
+		border-radius: 999px;
+		background: rgb(20 14 8 / 0.62);
+		color: #fff;
+		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35);
+	}
+	.evt-icons :global(.lucide-triangle-alert) {
+		color: var(--color-amber);
 	}
 	.short-title {
 		display: -webkit-box;
