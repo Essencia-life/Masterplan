@@ -50,10 +50,13 @@ export function parseResourceName(raw: string) {
 	return { group: 'Other', floor: '', name: clean };
 }
 
-function calendarGroup(name: string) {
-	if (/communit|co-?work/i.test(name)) return 'community';
-	if (/booking|guest|volunteer/i.test(name)) return 'stay';
-	return 'programme';
+/** Calendars are named "{group}/{name}"; anything else is not part of the booking tool. */
+function parseCalendarName(raw: string) {
+	const i = raw.indexOf('/');
+	if (i < 0) return null;
+	const group = raw.slice(0, i).trim();
+	const name = raw.slice(i + 1).trim();
+	return group && name ? { group, name } : null;
 }
 
 const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -84,34 +87,40 @@ export async function loadMeta(force = false) {
 	const writableIds = new Set<string>();
 	const resourceIds = new Set<string>();
 
+	const groupLabels = new Map<string, string>();
+	const groupOf = (label: string) => {
+		const id = 'g-' + slug(label);
+		if (!groupLabels.has(id)) groupLabels.set(id, label);
+		return id;
+	};
+
 	const calendars = entries
-		.filter((e) => e.id && !isResourceId(e.id) && !isNoise(e.id) && !IGNORED_NAMES.test(nameOf(e).trim()) && e.accessRole !== 'freeBusyReader')
-		.sort((a, b) => cmp(nameOf(a), nameOf(b)));
-	for (const e of calendars) {
+		.filter((e) => e.id && !isResourceId(e.id) && !isNoise(e.id) && e.accessRole !== 'freeBusyReader')
+		.map((e) => ({ e, p: parseCalendarName(nameOf(e)) }))
+		.filter((x): x is { e: calendar_v3.Schema$CalendarListEntry; p: { group: string; name: string } } => !!x.p)
+		.sort((a, b) => cmp(a.p.group, b.p.group) || cmp(a.p.name, b.p.name));
+	for (const { e, p } of calendars) {
 		const writable = e.accessRole === 'owner' || e.accessRole === 'writer';
 		if (writable) writableIds.add(e.id!);
-		rows.push({ id: e.id!, label: nameOf(e), kind: 'calendar', groupId: calendarGroup(nameOf(e)), color: e.backgroundColor ?? '#8b8372', available: true, writable });
+		rows.push({ id: e.id!, label: p.name, kind: 'calendar', groupId: groupOf(p.group), color: e.backgroundColor ?? '#8b8372', available: true, writable });
 	}
 
-	const groupLabels = new Map<string, string>();
 	const resources = entries
 		.filter((e) => e.id && isResourceId(e.id))
 		.map((e) => ({ e, p: parseResourceName(nameOf(e)) }))
 		.sort((a, b) => cmp(a.p.group, b.p.group) || cmp(a.p.floor, b.p.floor) || cmp(a.p.name, b.p.name));
 	for (const { e, p } of resources) {
-		const groupId = slug(p.group) === 'community' ? 'community' : 'r-' + slug(p.group);
-		if (groupId !== 'community' && !groupLabels.has(groupId)) groupLabels.set(groupId, p.group);
+		const groupId = groupOf(p.group);
 		resourceIds.add(e.id!);
 		rows.push({ id: e.id!, label: p.name, kind: 'resource', groupId, color: e.backgroundColor ?? '#8b8372', available: true, writable: false });
 	}
 
 	const used = new Set(rows.map((r) => r.groupId));
-	const groups: GroupInfo[] = [
-		{ id: 'programme', label: 'Programme' },
-		...[...groupLabels].map(([id, label]) => ({ id, label })),
-		{ id: 'stay', label: 'Guests & volunteers' },
-		{ id: 'community', label: 'Community' }
-	].filter((g) => used.has(g.id));
+	// calendar groups first, resource-only groups after, "Community" always last
+	const calendarGroups = new Set(rows.filter((r) => r.kind === 'calendar').map((r) => r.groupId));
+	const groups: GroupInfo[] = [...groupLabels]
+		.map(([id, label]) => ({ id, label }))
+		.sort((a, b) => Number(a.label.toLowerCase() === 'community') - Number(b.label.toLowerCase() === 'community') || Number(!calendarGroups.has(a.id)) - Number(!calendarGroups.has(b.id)));
 	const meta: CalendarMeta = { groups, rows };
 	metaCache = { at: Date.now(), meta, ids: new Set(rows.map((r) => r.id)), resourceIds, writableIds };
 	return metaCache;

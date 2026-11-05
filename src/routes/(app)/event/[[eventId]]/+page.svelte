@@ -11,11 +11,12 @@
 
 	const eventId = $derived(page.params.eventId);
 
+	const groupLabel = (id: string) => timeline.meta?.groups.find((g) => g.id === id)?.label ?? '';
 	const calendars = $derived(
-		(timeline.meta?.rows ?? []).filter((r) => r.kind === 'calendar' && r.writable).map((r) => ({ value: r.id, name: r.label }))
+		(timeline.meta?.rows ?? []).filter((r) => r.kind === 'calendar' && r.writable).map((r) => ({ value: r.id, name: `${groupLabel(r.groupId)} / ${r.label}` }))
 	);
 	const defaultCalendar = $derived(
-		timeline.meta?.rows.find((r) => r.writable && r.groupId === 'stay')?.id ?? calendars[0]?.value ?? ''
+		timeline.meta?.rows.find((r) => r.writable && /guest|volunteer|booking/i.test(r.label + groupLabel(r.groupId)))?.id ?? calendars[0]?.value ?? ''
 	);
 
 	let form = $state({

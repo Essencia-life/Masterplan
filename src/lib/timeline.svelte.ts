@@ -10,16 +10,22 @@ class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
 	/** collapsed groups are never fetched */
-	expanded = new SvelteSet<string>(['programme']);
+	expanded = new SvelteSet<string>();
 	private chunks = new SvelteMap<string, CalEvent[]>();
 	private pending = new Set<string>();
 	loading = $state(0);
+	private initialised = false;
 	/** bumped by invalidate() so effects refetch */
 	version = $state(0);
 
 	async loadMeta() {
 		try {
 			this.meta = await getCalendars();
+			// first load: open the groups that hold calendars
+			if (!this.initialised) {
+				this.initialised = true;
+				for (const r of this.meta.rows) if (r.kind === 'calendar') this.expanded.add(r.groupId);
+			}
 			this.error = null;
 		} catch (e) {
 			this.error = e instanceof Error ? e.message : 'Could not load calendars';
