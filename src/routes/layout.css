@@ -37,6 +37,22 @@
 	--color-primary-800: #36422b;
 	--color-primary-900: #2a3825;
 
+	/*
+	 * gray: flowbite-svelte components use gray-* for inputs, cards, borders and dark mode surfaces.
+	 * Remapped to the brand's warm parchment (light) and forest-tinted dark neutrals.
+	 */
+	--color-gray-50: #f9f5ea;
+	--color-gray-100: #ece4d0;
+	--color-gray-200: #ddd0b4;
+	--color-gray-300: #cbbd9c;
+	--color-gray-400: #a39b87;
+	--color-gray-500: #7a705f;
+	--color-gray-600: #3a483c;
+	--color-gray-700: #2a352b;
+	--color-gray-800: #212a22;
+	--color-gray-900: #192019;
+	--color-gray-950: #111611;
+
 	/* secondary: terra (accents, destructive-adjacent highlights) */
 	--color-secondary-50: #fbf3ee;
 	--color-secondary-100: #f6e3d8;
