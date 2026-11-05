@@ -2,8 +2,25 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Alegreya:wght@400;500;700&family=Cormorant+Garamond:wght@600;700&display=swap"
+		/>
+		<script>
+			// follow the system colour scheme (the theme uses a .dark class)
+			(function () {
+				var query = matchMedia('(prefers-color-scheme: dark)');
+				function apply() {
+					document.documentElement.classList.toggle('dark', query.matches);
+				}
+				apply();
+				query.addEventListener('change', apply);
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
