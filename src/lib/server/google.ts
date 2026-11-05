@@ -116,11 +116,11 @@ export async function loadMeta(force = false) {
 	}
 
 	const used = new Set(rows.map((r) => r.groupId));
-	// calendar groups first, resource-only groups after, "Community" always last
+	// groups with calendars first, resource-only groups after; "Community" last within each block
 	const calendarGroups = new Set(rows.filter((r) => r.kind === 'calendar').map((r) => r.groupId));
 	const groups: GroupInfo[] = [...groupLabels]
 		.map(([id, label]) => ({ id, label }))
-		.sort((a, b) => Number(a.label.toLowerCase() === 'community') - Number(b.label.toLowerCase() === 'community') || Number(!calendarGroups.has(a.id)) - Number(!calendarGroups.has(b.id)));
+		.sort((a, b) => Number(!calendarGroups.has(a.id)) - Number(!calendarGroups.has(b.id)) || Number(a.label.toLowerCase() === 'community') - Number(b.label.toLowerCase() === 'community'));
 	const meta: CalendarMeta = { groups, rows };
 	metaCache = { at: Date.now(), meta, ids: new Set(rows.map((r) => r.id)), resourceIds, writableIds };
 	return metaCache;
