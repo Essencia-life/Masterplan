@@ -6,6 +6,15 @@ import { dayToIso, isoToDay } from '#lib/time';
 export const CHUNK = 90;
 const key = (rowId: string, chunk: number) => `${rowId}|${chunk}`;
 
+function readHidden(): string[] {
+	try {
+		const v = JSON.parse(localStorage.getItem('hiddenRows') ?? '[]');
+		return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+	} catch {
+		return [];
+	}
+}
+
 class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
@@ -15,6 +24,18 @@ class Timeline {
 	private pending = new Set<string>();
 	loading = $state(0);
 	private initialised = false;
+	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
+	hidden = new SvelteSet<string>(readHidden());
+
+	toggleRow(rowId: string) {
+		if (this.hidden.has(rowId)) this.hidden.delete(rowId);
+		else this.hidden.add(rowId);
+		try {
+			localStorage.setItem('hiddenRows', JSON.stringify([...this.hidden]));
+		} catch {
+			// storage unavailable, keep in memory only
+		}
+	}
 	/** bumped by invalidate() so effects refetch */
 	version = $state(0);
 

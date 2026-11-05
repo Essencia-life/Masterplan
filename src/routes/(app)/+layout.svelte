@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack, type Snippet } from 'svelte';
-	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis } from '@lucide/svelte';
+	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff } from '@lucide/svelte';
 	import { timeline } from '#lib/timeline.svelte';
 	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
@@ -39,7 +39,7 @@
 			rows: (timeline.meta?.rows ?? []).filter((r) => r.groupId === g.id)
 		}))
 	);
-	const openRowIds = $derived(groups.filter((g) => g.open).flatMap((g) => g.rows.filter((r) => r.available).map((r) => r.id)));
+	const openRowIds = $derived(groups.filter((g) => g.open).flatMap((g) => g.rows.filter((r) => r.available && !timeline.hidden.has(r.id)).map((r) => r.id)));
 
 	$effect(() => {
 		const ids = openRowIds;
@@ -51,6 +51,7 @@
 
 	type Placed = { ev: CalEvent; s: number; e: number; lane: number; linked: boolean };
 	function pack(row: RowInfo): { items: Placed[]; lanes: number } {
+		if (timeline.hidden.has(row.id)) return { items: [], lanes: 1 };
 		const raw = timeline
 			.eventsOf(row.id)
 			.map((ev) => ({ ev, s: isoToDay(ev.start), e: isoToDay(ev.end) }))
@@ -71,6 +72,7 @@
 		for (const g of groups) {
 			if (!g.open) continue;
 			for (const r of g.rows) {
+				if (timeline.hidden.has(r.id)) continue;
 				const seen = new Set<string>();
 				for (const e of timeline.eventsOf(r.id)) seen.add(e.linkId);
 				for (const l of seen) m.set(l, (m.get(l) ?? 0) + 1);
@@ -355,10 +357,18 @@
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
 							<div class="relative flex border-b border-line-soft" data-row={row.writable ? row.id : undefined} style="height:{h}px">
-								<div data-label class="sticky left-0 z-10 flex shrink-0 items-start gap-2 bg-surface px-2 text-sm leading-5 border-r border-line" style="width:{LABW}px;padding-top:{PAD / 2 + 3}px" title={row.label}>
-									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{row.color}"></span>
-									<span class="truncate" class:text-muted={!row.available}>{row.label}</span>
-								</div>
+								<button
+									data-label
+									class="sticky left-0 z-10 flex shrink-0 cursor-pointer items-start gap-2 border-r border-line bg-surface px-2 text-left text-sm leading-5"
+									style="width:{LABW}px;padding-top:{PAD / 2 + 3}px"
+									title={timeline.hidden.has(row.id) ? `Show ${row.label}` : `Hide ${row.label}`}
+									aria-pressed={timeline.hidden.has(row.id)}
+									onclick={() => timeline.toggleRow(row.id)}
+								>
+									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{timeline.hidden.has(row.id) ? 'transparent' : row.color};box-shadow:inset 0 0 0 2px {row.color}"></span>
+									<span class="truncate" class:text-muted={timeline.hidden.has(row.id)}>{row.label}</span>
+									{#if timeline.hidden.has(row.id)}<EyeOff size={14} class="mt-[3px] shrink-0 text-muted" />{/if}
+								</button>
 								<div class="relative z-[1]" style="width:{N_DAYS * DAYW}px">
 									{#if sel && sel.rowId === row.id}
 										<div class="absolute inset-y-0.5 rounded border-2 border-dashed border-accent bg-accent/15" style="left:{Math.min(sel.a, sel.b) * DAYW}px;width:{(Math.abs(sel.b - sel.a) + 1) * DAYW}px"></div>
