@@ -6,12 +6,22 @@ import { dayToIso, isoToDay } from '#lib/time';
 export const CHUNK = 90;
 const key = (rowId: string, chunk: number) => `${rowId}|${chunk}`;
 
-function readHidden(): string[] {
+function readList(key: string): string[] | null {
 	try {
-		const v = JSON.parse(localStorage.getItem('hiddenRows') ?? '[]');
-		return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+		const raw = localStorage.getItem(key);
+		if (raw === null) return null;
+		const v = JSON.parse(raw);
+		return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : null;
 	} catch {
-		return [];
+		return null;
+	}
+}
+
+function writeList(key: string, values: Iterable<string>) {
+	try {
+		localStorage.setItem(key, JSON.stringify([...values]));
+	} catch {
+		// storage unavailable, keep in memory only
 	}
 }
 
@@ -19,22 +29,20 @@ class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
 	/** collapsed groups are never fetched */
-	expanded = new SvelteSet<string>();
+	/** null = nothing stored yet, so the defaults apply on first load */
+	private storedExpanded = readList('expandedGroups');
+	expanded = new SvelteSet<string>(this.storedExpanded ?? []);
 	private chunks = new SvelteMap<string, CalEvent[]>();
 	private pending = new Set<string>();
 	loading = $state(0);
 	private initialised = false;
 	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
-	hidden = new SvelteSet<string>(readHidden());
+	hidden = new SvelteSet<string>(readList('hiddenRows') ?? []);
 
 	toggleRow(rowId: string) {
 		if (this.hidden.has(rowId)) this.hidden.delete(rowId);
 		else this.hidden.add(rowId);
-		try {
-			localStorage.setItem('hiddenRows', JSON.stringify([...this.hidden]));
-		} catch {
-			// storage unavailable, keep in memory only
-		}
+		writeList('hiddenRows', this.hidden);
 	}
 	/** bumped by invalidate() so effects refetch */
 	version = $state(0);
@@ -45,7 +53,7 @@ class Timeline {
 			// first load: open the groups that hold calendars
 			if (!this.initialised) {
 				this.initialised = true;
-				for (const r of this.meta.rows) if (r.kind === 'calendar') this.expanded.add(r.groupId);
+				if (!this.storedExpanded) for (const r of this.meta.rows) if (r.kind === 'calendar') this.expanded.add(r.groupId);
 			}
 			this.error = null;
 		} catch (e) {
@@ -56,6 +64,7 @@ class Timeline {
 	toggle(groupId: string) {
 		if (this.expanded.has(groupId)) this.expanded.delete(groupId);
 		else this.expanded.add(groupId);
+		writeList('expandedGroups', this.expanded);
 	}
 
 	/** events of one row (deduplicated across chunks) */
