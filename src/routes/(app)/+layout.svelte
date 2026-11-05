@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { moveEvent } from '#lib/calendar.remote';
 	import { page } from '$app/state';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis } from '@lucide/svelte';
@@ -107,10 +106,6 @@
 
 	// ----- selection (drag / long press) -----
 	let drag = $state<{ rowId: string; a: number; b: number } | null>(null);
-	// moving an existing booking (drag & drop, whole days; linked bars move along)
-	let moving = $state<{ it: Placed; rowId: string; anchor: number; delta: number } | null>(null);
-	let pendingMove: { it: Placed; rowId: string; x: number } | null = null;
-	let suppressClick = false;
 	let pressTimer = 0;
 	let startPt = { x: 0, y: 0 };
 	let pointerId = -1;
@@ -136,55 +131,27 @@
 	function beginDrag(rowId: string, d: number) {
 		drag = { rowId, a: d, b: d };
 		scroller?.setPointerCapture?.(pointerId);
-		raf = requestAnimationFrame(tick);
-	}
-
-	function tick() {
-		if ((!drag && !moving) || !scroller) return;
-		const r = scroller.getBoundingClientRect();
-		if (lastX > r.right - 48) scroller.scrollLeft += 16;
-		else if (lastX < r.left + LABW + 48) scroller.scrollLeft -= 16;
-		if (drag) drag.b = dayAt(lastX);
-		else if (moving) moving.delta = dayAt(lastX) - moving.anchor;
-		raf = requestAnimationFrame(tick);
-	}
-
-	function beginMove(it: Placed, rowId: string, x: number) {
-		moving = { it, rowId, anchor: dayAt(x), delta: 0 };
-		suppressClick = true;
-		pendingMove = null;
-		scroller?.setPointerCapture?.(pointerId);
-		hot = null;
-		tip = null;
+		const tick = () => {
+			if (!drag || !scroller) return;
+			const r = scroller.getBoundingClientRect();
+			if (lastX > r.right - 48) scroller.scrollLeft += 16;
+			else if (lastX < r.left + LABW + 48) scroller.scrollLeft -= 16;
+			drag.b = dayAt(lastX);
+			raf = requestAnimationFrame(tick);
+		};
 		raf = requestAnimationFrame(tick);
 	}
 
 	function onDown(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const t = e.target as HTMLElement;
-		if (t.closest('[data-label]')) return;
+		if (t.closest('[data-ev]') || t.closest('[data-label]')) return;
 		const row = t.closest<HTMLElement>('[data-row]');
 		if (!row) return;
 		const rowId = row.dataset.row!;
 		startPt = { x: e.clientX, y: e.clientY };
 		lastX = e.clientX;
 		pointerId = e.pointerId;
-		const evEl = t.closest<HTMLElement>('[data-ev]');
-		if (evEl) {
-			// existing bar: mouse starts moving after a few px, touch after a long press
-			const it = packed.get(rowId)?.items.find((x) => x.ev.id === evEl.dataset.ev);
-			if (!it) return;
-			suppressClick = false;
-			pendingMove = { it, rowId, x: e.clientX };
-			if (e.pointerType !== 'mouse') {
-				clearTimeout(pressTimer);
-				pressTimer = window.setTimeout(() => {
-					navigator.vibrate?.(12);
-					beginMove(it, rowId, startPt.x);
-				}, 380);
-			}
-			return;
-		}
 		if (e.pointerType === 'mouse') {
 			e.preventDefault();
 			beginDrag(rowId, dayAt(e.clientX));
@@ -199,33 +166,14 @@
 	}
 	function onMove(e: PointerEvent) {
 		lastX = e.clientX;
-		if (pendingMove && !moving && e.pointerType === 'mouse' && Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 5) {
-			beginMove(pendingMove.it, pendingMove.rowId, startPt.x);
-		}
 		if (pressTimer && !drag && Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) {
 			clearTimeout(pressTimer);
 			pressTimer = 0;
 		}
 	}
-	async function onUp() {
+	function onUp() {
 		clearTimeout(pressTimer);
 		pressTimer = 0;
-		pendingMove = null;
-		if (moving) {
-			cancelAnimationFrame(raf);
-			const m = moving;
-			if (m.delta !== 0) {
-				try {
-					await moveEvent({ rowId: m.rowId, eventId: m.it.ev.id, days: m.delta });
-					timeline.invalidate();
-				} catch (err) {
-					timeline.error = err instanceof Error ? err.message : 'Could not move the booking';
-				}
-			}
-			moving = null;
-			setTimeout(() => (suppressClick = false), 0);
-			return;
-		}
 		if (!drag) return;
 		cancelAnimationFrame(raf);
 		const d = drag;
@@ -238,12 +186,10 @@
 		clearTimeout(pressTimer);
 		cancelAnimationFrame(raf);
 		drag = null;
-		moving = null;
-		pendingMove = null;
 	}
 	// while a long press selection is active the page must not scroll
 	function blockScroll(e: TouchEvent) {
-		if (drag || moving) e.preventDefault();
+		if (drag) e.preventDefault();
 	}
 
 	// ----- hover highlight of linked bars (fine pointers only) -----
@@ -286,7 +232,6 @@
 
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
 	function openEvent(ev: CalEvent) {
-		if (suppressClick) return;
 		goto(`/event/${ev.id}?cal=${encodeURIComponent(ev.rowId)}`, { reset: false });
 	}
 </script>
@@ -329,8 +274,8 @@
 			onpointermove={onMove}
 			onpointerup={onUp}
 			onpointercancel={onCancel}
-			oncontextmenu={(e) => (pressTimer || drag || moving) && e.preventDefault()}
-			style:user-select={drag || moving ? 'none' : undefined}
+			oncontextmenu={(e) => (pressTimer || drag) && e.preventDefault()}
+			style:user-select={drag ? 'none' : undefined}
 			style:-webkit-touch-callout="none"
 		>
 			<div bind:this={board} class="relative" style="width:{LABW + N_DAYS * DAYW}px">
@@ -414,13 +359,12 @@
 									{/if}
 									{#each pk?.items ?? [] as it (it.ev.id)}
 										<button
-											data-ev={it.ev.id}
+											data-ev
 											class="evt absolute overflow-clip rounded-md text-left text-[13px] leading-[26px] text-white"
 											class:hatched={it.linked}
 											class:tentative={it.ev.status === 'tentative'}
 											class:hot={hot === it.ev.linkId}
-											class:moving={moving?.it.ev.linkId === it.ev.linkId}
-											style="left:{it.s * DAYW + 1 + (moving?.it.ev.linkId === it.ev.linkId ? moving.delta * DAYW : 0)}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{row.color}"
+											style="left:{it.s * DAYW + 1}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{row.color}"
 											onmousemove={(e) => showTip(e, it)}
 											onclick={() => openEvent(it.ev)}
 											onmouseenter={() => canHover && canHover.matches && (hot = it.ev.linkId)}
@@ -497,15 +441,6 @@
 		opacity: 0.7;
 		outline: 1px dashed rgb(255 255 255 / 0.7);
 		outline-offset: -3px;
-	}
-	.evt {
-		cursor: grab;
-	}
-	.evt.moving {
-		opacity: 0.75;
-		z-index: 3;
-		cursor: grabbing;
-		box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
 	}
 	.evt.hot {
 		outline: 2px solid var(--app-ink);

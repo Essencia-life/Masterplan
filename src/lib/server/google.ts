@@ -225,12 +225,4 @@ export async function resolveOrganizer(rowId: string, eventId: string) {
 	throw new Error('Organizer event not found in the configured calendars');
 }
 
-const shiftStamp = (v: string, days: number) => addDays(v.slice(0, 10), days) + v.slice(10);
-
-export function shiftTimes(e: calendar_v3.Schema$Event, days: number) {
-	const shift = (t?: calendar_v3.Schema$EventDateTime) =>
-		t?.date ? { date: shiftStamp(t.date, days) } : { dateTime: shiftStamp(t!.dateTime!, days), timeZone: t?.timeZone ?? undefined };
-	return { start: shift(e.start ?? undefined), end: shift(e.end ?? undefined) };
-}
-
 export { addDays };
