@@ -11,18 +11,17 @@
 
 	const eventId = $derived(page.params.eventId);
 
-	const calendars = [
-		{ value: 'events', name: 'Events' },
-		{ value: 'retreats', name: 'Retreats' },
-		{ value: 'bookings', name: 'Guests & volunteers' },
-		{ value: 'community', name: 'Community' },
-		{ value: 'coworking', name: 'Co-working' }
-	];
+	const calendars = $derived(
+		(timeline.meta?.rows ?? []).filter((r) => r.kind === 'calendar' && r.writable).map((r) => ({ value: r.id, name: r.label }))
+	);
+	const defaultCalendar = $derived(
+		timeline.meta?.rows.find((r) => r.writable && r.groupId === 'stay')?.id ?? calendars[0]?.value ?? ''
+	);
 
 	let form = $state({
 		id: undefined as string | undefined,
 		linkId: '',
-		calendar: 'bookings',
+		calendar: '',
 		title: '',
 		start: '',
 		end: '', // inclusive in the UI, converted to exclusive on save
@@ -53,13 +52,13 @@
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'));
 		} else {
 			const row = sp.get('row');
-			const isMain = calendars.some((c) => c.value === row);
+			const isMain = !!row && !row.endsWith('@resource.calendar.google.com');
 			const from = sp.get('from') ?? dayToIso(TODAY);
 			const to = sp.get('to');
 			form = {
 				id: undefined,
 				linkId: '',
-				calendar: isMain ? row! : 'bookings',
+				calendar: isMain ? row! : '',
 				title: '',
 				start: from,
 				end: to ? dayToIso(isoToDay(to) - 1) : from,
@@ -71,6 +70,11 @@
 				resourceIds: row && !isMain ? [row] : []
 			};
 		}
+	});
+
+	// preselect a calendar once the calendar list is known
+	$effect(() => {
+		if (!form.calendar && defaultCalendar) form.calendar = defaultCalendar;
 	});
 
 	const resourceGroups = $derived(
@@ -141,8 +145,9 @@
 		}
 	}
 	const retreatGap = $derived.by(() => {
-		if (form.calendar !== 'retreats') return null;
-		for (const e of timeline.eventsOf('retreats')) {
+		const cal = timeline.meta?.rows.find((r) => r.id === form.calendar);
+		if (!cal || !/retreat/i.test(cal.label)) return null;
+		for (const e of timeline.eventsOf(cal.id)) {
 			if (e.id === form.id || (form.linkId && e.linkId === form.linkId)) continue;
 			const s = isoToDay(e.start),
 				en = isoToDay(e.end);
@@ -153,7 +158,7 @@
 		return null;
 	});
 
-	const valid = $derived(form.title.trim() && form.start && form.end && form.end >= form.start);
+	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start);
 
 	async function save() {
 		busy = true;

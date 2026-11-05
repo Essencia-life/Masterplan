@@ -338,7 +338,7 @@
 
 				<!-- groups & rows -->
 				{#each groups as g (g.id)}
-					<div class="flex border-b border-line bg-surface-2" style="height:30px">
+					<div class="relative z-[1] flex border-b border-line bg-surface-2" style="height:30px">
 						<button
 							data-label
 							class="sticky left-0 z-10 flex shrink-0 items-center gap-1 bg-surface-2 px-2 text-left whitespace-nowrap"
@@ -347,14 +347,14 @@
 							aria-expanded={g.open}
 						>
 							<ChevronDown size={16} class={g.open ? '' : '-rotate-90'} />
-							<span class="font-display text-[15px] font-bold">{g.label}</span>
+							<span class="font-display text-[18px] font-bold">{g.label}</span>
 						</button>
 					</div>
 					{#if g.open}
 						{#each g.rows as row (row.id)}
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
-							<div class="relative flex border-b border-line-soft" data-row={row.kind === 'calendar' && row.available ? row.id : undefined} style="height:{h}px">
+							<div class="relative flex border-b border-line-soft" data-row={row.writable ? row.id : undefined} style="height:{h}px">
 								<div data-label class="sticky left-0 z-10 flex shrink-0 items-start gap-2 bg-surface px-2 text-sm leading-5 border-r border-line" style="width:{LABW}px;padding-top:{PAD / 2 + 3}px" title={row.label}>
 									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{row.color}"></span>
 									<span class="truncate" class:text-muted={!row.available}>{row.label}</span>

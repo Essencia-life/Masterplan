@@ -6,7 +6,6 @@ import {
 	addDays,
 	calendar,
 	freshRows,
-	isMainKey,
 	listEvents,
 	loadMeta,
 	resolveCalendarId,
@@ -90,7 +89,7 @@ export const getEvent = query(
 
 const saveSchema = z.object({
 	id: z.string().optional(),
-	calendar: z.string().refine(isMainKey, 'Pick a calendar'),
+	calendar: z.string(),
 	title: z.string().trim().min(1).max(200),
 	start: isoDate,
 	end: isoDate,
@@ -106,7 +105,8 @@ export const saveEvent = command(saveSchema, async (input) => {
 	if (input.allDay ? input.end <= input.start : input.end < input.start) error(400, 'End must be after start');
 	if (!input.allDay && (!input.startTime || !input.endTime)) error(400, 'Times are required');
 	if (!input.allDay && input.end === input.start && input.endTime! <= input.startTime!) error(400, 'End time must be after start time');
-	const { resourceIds } = await loadMeta();
+	const { resourceIds, writableIds } = await loadMeta();
+	if (!writableIds.has(input.calendar)) error(400, 'This calendar is read-only');
 	for (const r of input.resourceIds) if (!resourceIds.has(r)) error(400, 'Unknown resource');
 	const calendarId = await resolveCalendarId(input.calendar);
 	const requestBody = {
@@ -135,8 +135,9 @@ export const saveEvent = command(saveSchema, async (input) => {
 });
 
 export const deleteEvent = command(
-	z.object({ calendar: z.string().refine(isMainKey), id: z.string() }),
+	z.object({ calendar: z.string(), id: z.string() }),
 	async ({ calendar: key, id }) => {
+		if (!(await loadMeta()).writableIds.has(key)) error(400, 'This calendar is read-only');
 		const calendarId = await resolveCalendarId(key);
 		const api = calendar().events;
 		const before = (await api.get({ calendarId, eventId: id })).data;

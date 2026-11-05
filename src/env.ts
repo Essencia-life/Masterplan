@@ -9,11 +9,5 @@ export const variables = defineEnvVars({
 	/** Only needed when GOOGLE_SERVICE_ACCOUNT_JSON holds just the PEM private key */
 	GOOGLE_SERVICE_ACCOUNT_EMAIL: optional,
 	/** Workspace user to impersonate (domain-wide delegation) */
-	GOOGLE_IMPERSONATE_USER: optional,
-	GOOGLE_CALENDAR_EVENTS: optional,
-	GOOGLE_CALENDAR_RETREATS: optional,
-	/** Guests and volunteers */
-	GOOGLE_CALENDAR_BOOKINGS: optional,
-	GOOGLE_CALENDAR_COMMUNITY: optional,
-	GOOGLE_CALENDAR_COWORKING: optional
+	GOOGLE_IMPERSONATE_USER: optional
 });

@@ -1,14 +1,13 @@
-export type MainKey = 'events' | 'retreats' | 'bookings' | 'community' | 'coworking';
-export const MAIN_KEYS: MainKey[] = ['events', 'retreats', 'bookings', 'community', 'coworking'];
-
 export type RowInfo = {
-	/** MainKey for the configured calendars, the Google calendar id for resource calendars */
+	/** Google calendar id */
 	id: string;
 	label: string;
 	kind: 'calendar' | 'resource';
 	groupId: string;
 	color: string;
 	available: boolean;
+	/** bookings can be created/edited here (calendars with write access) */
+	writable: boolean;
 };
 
 export type GroupInfo = { id: string; label: string };
