@@ -180,7 +180,7 @@
 		drag = null;
 		const a = Math.min(d.a, d.b),
 			b = Math.max(d.a, d.b);
-		goto(`/event?row=${encodeURIComponent(d.rowId)}&from=${dayToIso(a)}&to=${dayToIso(b + 1)}`, { noScroll: true, keepFocus: true });
+		goto(`/event?row=${encodeURIComponent(d.rowId)}&from=${dayToIso(a)}&to=${dayToIso(b + 1)}`, { reset: false });
 	}
 	function onCancel() {
 		clearTimeout(pressTimer);
@@ -194,6 +194,14 @@
 
 	// ----- hover highlight of linked bars (fine pointers only) -----
 	let hot = $state<string | null>(null);
+	let tip = $state<{ text: string; x: number; y: number } | null>(null);
+	function showTip(e: MouseEvent, it: Placed) {
+		if (!canHover || !canHover.matches || drag) return (tip = null);
+		const range = `${it.ev.start} – ${dayToIso(it.e - 1)}`;
+		const rooms = (linkCount.get(it.ev.linkId) ?? 1) - 1;
+		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · tentative' : ''}`;
+		tip = { text, x: Math.min(e.clientX + 12, innerWidth - 260), y: e.clientY + 16 };
+	}
 
 	// ----- navigation -----
 	function scrollToDay(d: number, smooth = true) {
@@ -224,7 +232,7 @@
 
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
 	function openEvent(ev: CalEvent) {
-		goto(`/event/${ev.id}?cal=${encodeURIComponent(ev.rowId)}`, { noScroll: true, keepFocus: true });
+		goto(`/event/${ev.id}?cal=${encodeURIComponent(ev.rowId)}`, { reset: false });
 	}
 </script>
 
@@ -238,13 +246,13 @@
 			<button class="btn" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></button>
 			<button class="btn" onclick={() => scrollToDay(TODAY)}>Today</button>
 			<button class="btn" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></button>
-			<button class="btn btn-primary" onclick={() => goto('/event', { noScroll: true })}>New booking</button>
+			<button class="btn btn-primary" onclick={() => goto('/event', { reset: false })}>New booking</button>
 		</div>
 		<div class="relative sm:hidden">
 			<button class="btn" aria-label="More" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}><Ellipsis size={18} /></button>
 			{#if menuOpen}
 				<div class="absolute right-0 z-30 mt-1 w-40 rounded-lg border border-line bg-surface p-1 shadow-panel">
-					{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ['New booking', () => goto('/event', { noScroll: true })]] as [label, fn] (label)}
+					{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ['New booking', () => goto('/event', { reset: false })]] as [label, fn] (label)}
 						<button class="block w-full rounded px-3 py-2 text-left hover:bg-surface-2" onclick={() => { (fn as () => void)(); menuOpen = false; }}>{label}</button>
 					{/each}
 				</div>
@@ -357,10 +365,10 @@
 											class:tentative={it.ev.status === 'tentative'}
 											class:hot={hot === it.ev.linkId}
 											style="left:{it.s * DAYW + 1}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{row.color}"
-											title={mobile ? undefined : it.ev.title}
+											onmousemove={(e) => showTip(e, it)}
 											onclick={() => openEvent(it.ev)}
 											onmouseenter={() => canHover && canHover.matches && (hot = it.ev.linkId)}
-											onmouseleave={() => (hot = null)}
+											onmouseleave={() => ((hot = null), (tip = null))}
 										>
 											<span class="sticky inline-block max-w-full truncate px-2" style="left:{LABW + 4}px">{it.ev.title}</span>
 										</button>
@@ -387,6 +395,10 @@
 		{/if}
 	</div>
 </div>
+
+{#if tip}
+	<div class="pointer-events-none fixed z-50 max-w-60 rounded-md bg-ink px-2.5 py-1.5 text-xs text-canvas shadow-panel" style="left:{tip.x}px;top:{tip.y}px">{tip.text}</div>
+{/if}
 
 <style>
 	.btn {

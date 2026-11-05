@@ -142,7 +142,7 @@
 			busy = false;
 		}
 	}
-	const close = () => goto('/', { noScroll: true });
+	const close = () => goto('/', { reset: false });
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
