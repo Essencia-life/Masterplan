@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
+	import { calendarIdFromSlug, calendarSlug, isResourceCalendar } from '#lib/calendar-id';
 	import { timeline } from '#lib/timeline.svelte';
 	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
@@ -118,7 +119,7 @@
 	const urlSel = $derived.by(() => {
 		if (!page.route.id?.includes('/event/') || page.params.eventId) return null;
 		const sp = page.url.searchParams;
-		const row = sp.get('row'),
+		const row = calendarIdFromSlug(page.params.calendarId) ?? sp.get('row'),
 			from = sp.get('from'),
 			to = sp.get('to');
 		return row && from && to ? { rowId: row, a: isoToDay(from), b: isoToDay(to) } : null;
@@ -182,7 +183,8 @@
 		drag = null;
 		const a = Math.min(d.a, d.b),
 			b = Math.max(d.a, d.b);
-		goto(`/event?row=${encodeURIComponent(d.rowId)}&from=${dayToIso(a)}&to=${dayToIso(b + 1)}`, { reset: false });
+		const range = `from=${dayToIso(a)}&to=${dayToIso(b + 1)}`;
+		goto(isResourceCalendar(d.rowId) ? `/event?row=${encodeURIComponent(d.rowId)}&${range}` : `/event/${calendarSlug(d.rowId)}?${range}`, { reset: false });
 	}
 	function onCancel() {
 		clearTimeout(pressTimer);
@@ -253,7 +255,7 @@
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
 	function openEvent(ev: CalEvent) {
 		if (ev.id.startsWith('optimistic:')) return;
-		goto(`/event/${ev.id}?cal=${encodeURIComponent(ev.rowId)}`, { reset: false });
+		goto(`/event/${calendarSlug(ev.rowId)}/${ev.id}`, { reset: false });
 	}
 </script>
 

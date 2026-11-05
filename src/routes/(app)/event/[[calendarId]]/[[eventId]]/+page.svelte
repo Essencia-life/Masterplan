@@ -5,11 +5,14 @@
 	import { Button, Checkbox, Input, Label, Select, Textarea } from 'flowbite-svelte';
 	import { X } from '@lucide/svelte';
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
+	import { calendarIdFromSlug } from '#lib/calendar-id';
 	import { timeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, isoToDay } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
 
 	const eventId = $derived(page.params.eventId);
+	/** calendar from the path: the booking's calendar (edit) or the calendar of the row it was created in (new) */
+	const pathCalendar = $derived(calendarIdFromSlug(page.params.calendarId));
 
 	const fromResource = $derived(!eventId && !!page.url.searchParams.get('row')?.endsWith('@resource.calendar.google.com'));
 	const groupLabel = (id: string) => timeline.meta?.groups.find((g) => g.id === id)?.label ?? '';
@@ -53,13 +56,13 @@
 		const sp = page.url.searchParams;
 		loadError = saveError = null;
 		if (id) {
-			getEvent({ eventId: id, calendar: sp.get('cal') ?? undefined })
+			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
 					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds };
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'));
 		} else {
-			const row = sp.get('row');
+			const row = pathCalendar ?? sp.get('row');
 			const isMain = !!row && !row.endsWith('@resource.calendar.google.com');
 			const from = sp.get('from') ?? dayToIso(TODAY);
 			const to = sp.get('to');
