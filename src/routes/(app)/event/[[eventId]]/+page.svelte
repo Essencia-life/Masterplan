@@ -179,6 +179,25 @@
 				resourceIds: form.resourceIds
 			});
 			timeline.applyFresh(res.fresh);
+			// no conflicts: show the room bookings right away as tentative, Google mirrors them a moment later
+			if (!conflicts.length) {
+				const pending = form.resourceIds.filter((rid) => !res.fresh.rows[rid]?.some((e) => e.linkId === res.linkId));
+				if (pending.length) {
+					timeline.addOptimistic(
+						pending.map((rid) => ({
+							id: `optimistic:${res.linkId}:${rid}`,
+							rowId: rid,
+							linkId: res.linkId,
+							title: form.title,
+							start: form.start,
+							end: dayToIso(isoToDay(form.end) + 1),
+							status: 'tentative' as const,
+							description: form.description
+						}))
+					);
+					void timeline.confirm(pending, res.fresh.from, res.fresh.to, res.linkId);
+				}
+			}
 			await close();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'Could not save';

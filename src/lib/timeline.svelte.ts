@@ -1,5 +1,5 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-import { getCalendars, getEvents } from '#lib/calendar.remote';
+import { getCalendars, getEvents, refreshRows } from '#lib/calendar.remote';
 import type { CalEvent, CalendarMeta, Fresh } from '#lib/types';
 import { dayToIso, isoToDay } from '#lib/time';
 
@@ -118,6 +118,39 @@ class Timeline {
 				const inChunk = (e: CalEvent) => isoToDay(e.start) < cTo && isoToDay(e.end) > cFrom;
 				const kept = this.chunks.get(k)!.filter((e) => !overlapsWindow(e));
 				this.chunks.set(k, [...kept, ...events.filter(inChunk)]);
+			}
+		}
+	}
+
+	/** Show events immediately (e.g. room bookings Google has not mirrored yet); replaced by the next applyFresh. */
+	addOptimistic(events: CalEvent[]) {
+		for (const ev of events) {
+			const s = isoToDay(ev.start);
+			const e = isoToDay(ev.end);
+			for (const k of [...this.chunks.keys()]) {
+				if (!k.startsWith(ev.rowId + '|')) continue;
+				const c = Number(k.split('|')[1]);
+				if (s >= (c + 1) * CHUNK || e <= c * CHUNK) continue;
+				const list = this.chunks.get(k)!;
+				if (!list.some((x) => x.id === ev.id)) this.chunks.set(k, [...list, ev]);
+			}
+		}
+	}
+
+	/**
+	 * Re-read the given rows after a few seconds and stop as soon as every row contains the
+	 * event (identified by linkId). Rows where it never shows up lose their optimistic entry
+	 * (e.g. the room declined).
+	 */
+	async confirm(rowIds: string[], from: string, to: string, linkId: string, delays = [3000, 8000]) {
+		for (const delay of delays) {
+			await new Promise((r) => setTimeout(r, delay));
+			try {
+				const fresh = await refreshRows({ rowIds, from, to });
+				this.applyFresh(fresh);
+				if (rowIds.every((id) => fresh.rows[id]?.some((e) => e.linkId === linkId))) return;
+			} catch {
+				// try again with the next delay
 			}
 		}
 	}

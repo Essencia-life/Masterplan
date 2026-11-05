@@ -251,6 +251,7 @@
 
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
 	function openEvent(ev: CalEvent) {
+		if (ev.id.startsWith('optimistic:')) return;
 		goto(`/event/${ev.id}?cal=${encodeURIComponent(ev.rowId)}`, { reset: false });
 	}
 </script>

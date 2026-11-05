@@ -134,8 +134,14 @@ export const saveEvent = command(saveSchema, async (input) => {
 		[oldStart, input.start].sort()[0],
 		[oldEnd, input.end].sort().at(-1)!
 	);
-	return { id: res.data.id!, calendar: input.calendar, fresh };
+	return { id: res.data.id!, linkId: res.data.iCalUID ?? res.data.id!, calendar: input.calendar, fresh };
 });
+
+/** Re-read rows after a mutation (resource copies of an event show up with a delay). */
+export const refreshRows = command(
+	z.object({ rowIds: z.array(z.string()).min(1).max(40), from: isoDate, to: isoDate }),
+	async ({ rowIds, from, to }) => freshRows(rowIds, from, to)
+);
 
 export const deleteEvent = command(
 	z.object({ calendar: z.string(), id: z.string() }),
