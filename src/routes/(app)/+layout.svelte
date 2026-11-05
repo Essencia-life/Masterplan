@@ -298,6 +298,7 @@
 								<div
 									class="absolute top-0 flex h-full flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
 									class:weekend={isWeekend(d)}
+									class:month-start={dom(d) === 1}
 									class:today={d === TODAY}
 									style="left:{d * DAYW}px;width:{DAYW}px"
 								>
@@ -312,7 +313,7 @@
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								{@const p = moonPath(moonPhase(d))}
-								<div class="absolute top-0 flex h-full items-center justify-center" style="left:{d * DAYW}px;width:{DAYW}px">
+								<div class="absolute top-0 flex h-full items-center justify-center border-l border-line-soft" class:month-start={dom(d) === 1} style="left:{d * DAYW}px;width:{DAYW}px">
 									<svg width="16" height="16" viewBox="-9 -9 18 18" aria-hidden="true">
 										<circle r="8" fill="var(--app-surface-2)" stroke="var(--app-line)" />
 										{#if p === 'full'}<circle r="8" fill="var(--color-amber)" />{:else if p !== 'new'}<path d={p} fill="var(--color-amber)" />{/if}
@@ -326,6 +327,9 @@
 				<!-- column shading (weekends / today) for the whole body -->
 				<div class="pointer-events-none absolute bottom-0 z-0" style="top:102px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
 					{#each days as d (d)}
+						{#if dom(d) === 1}
+							<div class="absolute top-0 h-full border-l border-line" style="left:{d * DAYW}px"></div>
+						{/if}
 						{#if isWeekend(d) || d === TODAY}
 							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === TODAY ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
 						{/if}
@@ -334,23 +338,25 @@
 
 				<!-- groups & rows -->
 				{#each groups as g (g.id)}
-					<button
-						data-label
-						class="sticky left-0 z-10 flex w-full items-center gap-1 border-b border-line bg-surface-2/90 px-2 text-left whitespace-nowrap"
-						style="height:30px;width:{LABW}px;"
-						onclick={() => timeline.toggle(g.id)}
-						aria-expanded={g.open}
-					>
-						<ChevronDown size={16} class={g.open ? '' : '-rotate-90'} />
-						<span class="font-display text-[15px] font-bold">{g.label}</span>
-					</button>
+					<div class="flex border-b border-line bg-surface-2" style="height:30px">
+						<button
+							data-label
+							class="sticky left-0 z-10 flex shrink-0 items-center gap-1 bg-surface-2 px-2 text-left whitespace-nowrap"
+							style="height:29px;min-width:{LABW}px"
+							onclick={() => timeline.toggle(g.id)}
+							aria-expanded={g.open}
+						>
+							<ChevronDown size={16} class={g.open ? '' : '-rotate-90'} />
+							<span class="font-display text-[15px] font-bold">{g.label}</span>
+						</button>
+					</div>
 					{#if g.open}
 						{#each g.rows as row (row.id)}
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
 							<div class="relative flex border-b border-line-soft" data-row={row.kind === 'calendar' && row.available ? row.id : undefined} style="height:{h}px">
-								<div data-label class="sticky left-0 z-10 flex shrink-0 items-center gap-2 bg-surface px-2 text-sm" style="width:{LABW}px" title={row.label}>
-									<span class="size-2.5 shrink-0 rounded-full" style="background:{row.color}"></span>
+								<div data-label class="sticky left-0 z-10 flex shrink-0 items-start gap-2 bg-surface px-2 text-sm leading-5" style="width:{LABW}px;padding-top:{PAD / 2 + 3}px" title={row.label}>
+									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{row.color}"></span>
 									<span class="truncate" class:text-muted={!row.available}>{row.label}</span>
 								</div>
 								<div class="relative z-[1]" style="width:{N_DAYS * DAYW}px">
@@ -422,6 +428,9 @@
 	.btn-primary:hover {
 		background: var(--app-accent);
 		opacity: 0.9;
+	}
+	.month-start {
+		border-left-color: var(--app-line);
 	}
 	.weekend {
 		background: var(--app-weekend);
