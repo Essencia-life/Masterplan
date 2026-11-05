@@ -330,7 +330,7 @@
 					</select>
 					<Button size="xs" disabled={!moveTo[c.key] || resolving === c.key} onclick={() => resolve(c, 'move')}>Move</Button>
 				</div>
-				{#if !alts.length}<p class="text-xs text-muted">No free room for these dates.</p>{/if}
+				{#if !alts.length}<p class="text-xs text-muted">No free room for these dates: all {(timeline.meta?.rows ?? []).filter((r) => r.kind === 'resource').length} room calendars are either part of this booking or already booked.</p>{/if}
 			</div>
 		{/each}
 	{:else}
