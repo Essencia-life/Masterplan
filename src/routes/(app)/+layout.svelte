@@ -414,6 +414,7 @@
 										<button
 											data-ev
 											class="evt absolute overflow-clip rounded-md text-left text-[13px] leading-[26px] text-white"
+											class:long={it.e - it.s > 1}
 											class:hatched={it.linked}
 											class:tentative={it.ev.status === 'tentative'}
 											class:hot={hot === it.ev.linkId}
@@ -424,7 +425,7 @@
 											onmouseleave={() => ((hot = null), (tip = null))}
 										>
 											{#if it.ev.declinedRooms?.length || it.ev.description.trim()}
-												<span class="evt-icons" aria-hidden="true">
+												<span class="evt-icons" class:long={it.e - it.s > 1} aria-hidden="true">
 													{#if it.ev.declinedRooms?.length}<TriangleAlert size={11} strokeWidth={2.5} />{/if}
 													{#if it.ev.description.trim()}<StickyNote size={11} strokeWidth={2.25} />{/if}
 												</span>
@@ -432,7 +433,7 @@
 											{#if it.e - it.s <= 1}
 												<span class="short-title">{it.ev.title}</span>
 											{:else}
-												<span class="sticky inline-block max-w-full truncate px-2" style="left:{LABW + 4}px">{it.ev.title}</span>
+												<span class="sticky min-w-0 truncate px-2" style="left:{LABW + 4}px">{it.ev.title}</span>
 											{/if}
 										</button>
 									{/each}
@@ -508,7 +509,7 @@
 	/* one-day bars: small text that wraps anywhere so the title stays readable */
 	.evt-icons {
 		position: absolute;
-		top: 2px;
+		bottom: 2px;
 		right: 2px;
 		z-index: 1;
 		display: flex;
@@ -519,6 +520,20 @@
 		background: rgb(20 14 8 / 0.62);
 		color: #fff;
 		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35);
+	}
+	/* long bars: the badge sticks to the right edge of the viewport while the bar scrolls */
+	.evt.long {
+		display: flex;
+	}
+	.evt-icons.long {
+		position: sticky;
+		right: 6px;
+		bottom: auto;
+		order: 2;
+		margin: 0 4px 0 auto;
+		align-self: flex-end;
+		margin-bottom: 2px;
+		flex-shrink: 0;
 	}
 	.evt-icons :global(.lucide-triangle-alert) {
 		color: var(--color-amber);
