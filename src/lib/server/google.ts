@@ -1,14 +1,14 @@
 import { google, type calendar_v3 } from 'googleapis';
-import { env } from '$env/dynamic/private';
+import * as env from '$app/env/private';
 import type { CalEvent, CalendarMeta, GroupInfo, MainKey, RowInfo } from '#lib/types';
 import { MAIN_KEYS } from '#lib/types';
 
-const ENV_KEYS: Record<MainKey, string> = {
-	events: 'GOOGLE_CALENDAR_EVENTS',
-	retreats: 'GOOGLE_CALENDAR_RETREATS',
-	bookings: 'GOOGLE_CALENDAR_BOOKINGS',
-	community: 'GOOGLE_CALENDAR_COMMUNITY',
-	coworking: 'GOOGLE_CALENDAR_COWORKING'
+const CALENDAR_IDS: Record<MainKey, () => string | undefined> = {
+	events: () => env.GOOGLE_CALENDAR_EVENTS,
+	retreats: () => env.GOOGLE_CALENDAR_RETREATS,
+	bookings: () => env.GOOGLE_CALENDAR_BOOKINGS,
+	community: () => env.GOOGLE_CALENDAR_COMMUNITY,
+	coworking: () => env.GOOGLE_CALENDAR_COWORKING
 };
 
 const MAIN_META: Record<MainKey, { label: string; groupId: string; color: string }> = {
@@ -46,8 +46,7 @@ export function calendar() {
 }
 
 function mainCalendarId(key: MainKey) {
-	const id = env[ENV_KEYS[key]];
-	return id || undefined;
+	return CALENDAR_IDS[key]() || undefined;
 }
 
 function resourceGroup(name: string) {
