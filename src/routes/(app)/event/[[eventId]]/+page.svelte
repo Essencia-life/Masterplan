@@ -14,7 +14,13 @@
 	const fromResource = $derived(!eventId && !!page.url.searchParams.get('row')?.endsWith('@resource.calendar.google.com'));
 	const groupLabel = (id: string) => timeline.meta?.groups.find((g) => g.id === id)?.label ?? '';
 	const calendars = $derived(
-		(timeline.meta?.rows ?? []).filter((r) => r.kind === 'calendar' && r.writable).map((r) => ({ value: r.id, name: `${groupLabel(r.groupId)} / ${r.label}` }))
+		(timeline.meta?.rows ?? []).filter((r) => r.kind === 'calendar' && r.writable).map((r) => ({ value: r.id, name: r.label }))
+	);
+	/** writable calendars grouped for <optgroup> */
+	const calendarOptions = $derived(
+		(timeline.meta?.groups ?? [])
+			.map((g) => ({ label: g.label, items: (timeline.meta?.rows ?? []).filter((r) => r.groupId === g.id && r.kind === 'calendar' && r.writable) }))
+			.filter((g) => g.items.length)
 	);
 	const defaultCalendar = $derived(
 		timeline.meta?.rows.find((r) => r.writable && /guest|volunteer|booking/i.test(r.label + groupLabel(r.groupId)))?.id ?? calendars[0]?.value ?? ''
@@ -250,7 +256,19 @@
 		</div>
 		<div>
 			<Label for="f-cal" class="mb-1">Calendar</Label>
-			<Select id="f-cal" items={calendars} placeholder="Choose a calendar…" bind:value={form.calendar} disabled={!!form.id} />
+			<select
+				id="f-cal"
+				class="block w-full rounded-lg border border-line bg-surface p-2.5 text-sm text-ink focus:border-primary-500 focus:ring-primary-500 disabled:opacity-60"
+				bind:value={form.calendar}
+				disabled={!!form.id}
+			>
+				<option value="" disabled>Choose a calendar…</option>
+				{#each calendarOptions as g (g.label)}
+					<optgroup label={g.label}>
+						{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}
+					</optgroup>
+				{/each}
+			</select>
 			{#if !form.calendar}<p class="mt-1 text-xs text-muted">Pick the calendar this booking belongs to.</p>{/if}
 		</div>
 		<div class="grid grid-cols-2 gap-3">
