@@ -11,6 +11,7 @@
 
 	const eventId = $derived(page.params.eventId);
 
+	const fromResource = $derived(!eventId && !!page.url.searchParams.get('row')?.endsWith('@resource.calendar.google.com'));
 	const groupLabel = (id: string) => timeline.meta?.groups.find((g) => g.id === id)?.label ?? '';
 	const calendars = $derived(
 		(timeline.meta?.rows ?? []).filter((r) => r.kind === 'calendar' && r.writable).map((r) => ({ value: r.id, name: `${groupLabel(r.groupId)} / ${r.label}` }))
@@ -75,7 +76,8 @@
 
 	// preselect a calendar once the calendar list is known
 	$effect(() => {
-		if (!form.calendar && defaultCalendar) form.calendar = defaultCalendar;
+		// created from a room row: the user has to pick the calendar
+		if (!form.calendar && defaultCalendar && !fromResource) form.calendar = defaultCalendar;
 	});
 
 	const resourceGroups = $derived(
@@ -248,7 +250,8 @@
 		</div>
 		<div>
 			<Label for="f-cal" class="mb-1">Calendar</Label>
-			<Select id="f-cal" items={calendars} bind:value={form.calendar} disabled={!!form.id} />
+			<Select id="f-cal" items={calendars} placeholder="Choose a calendar…" bind:value={form.calendar} disabled={!!form.id} />
+			{#if !form.calendar}<p class="mt-1 text-xs text-muted">Pick the calendar this booking belongs to.</p>{/if}
 		</div>
 		<div class="grid grid-cols-2 gap-3">
 			<div>

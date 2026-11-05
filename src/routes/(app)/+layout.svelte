@@ -328,14 +328,14 @@
 							{/each}
 						</div>
 					</div>
-					<div class="flex" style="height:32px">
+					<div class="flex" style="height:28px">
 						<div class="sticky left-0 z-10 flex shrink-0 items-center bg-surface px-2 text-[11px] text-muted border-r border-line" style="width:{LABW}px">Moon</div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								{@const p = moonPath(moonPhase(d))}
 								{@const key = moonKey(d)}
 								<div class="absolute top-0 flex h-full items-center justify-center border-l border-line-soft" class:month-start={dom(d) === 1} style="left:{d * DAYW}px;width:{DAYW}px" title={key || undefined}>
-									<svg width={key ? 26 : 19} height={key ? 26 : 19} viewBox="-10 -10 20 20" aria-label={key || undefined} aria-hidden={key ? undefined : true}>
+									<svg width={key ? 22 : 16} height={key ? 22 : 16} viewBox="-10 -10 20 20" aria-label={key || undefined} aria-hidden={key ? undefined : true}>
 										{#if key}<circle r="9.4" fill="none" stroke="var(--color-amber)" stroke-width="1.2" />{/if}
 										<circle r="8" fill="var(--app-surface-2)" stroke="var(--app-line)" />
 										{#if p === 'full'}<circle r="8" fill="var(--color-amber)" />{:else if p !== 'new'}<path d={p} fill="var(--color-amber)" />{/if}
@@ -347,7 +347,7 @@
 				</div>
 
 				<!-- column shading (weekends / today) for the whole body -->
-				<div class="pointer-events-none absolute bottom-0 z-0" style="top:108px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
+				<div class="pointer-events-none absolute bottom-0 z-0" style="top:104px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
 					{#each days as d (d)}
 						{#if dom(d) === 1}
 							<div class="absolute top-0 h-full border-l border-line" style="left:{d * DAYW}px"></div>
@@ -392,7 +392,7 @@
 						{#each g.rows as row (row.id)}
 							{@const pk = packed.get(row.id)}
 							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
-							<div class="relative flex border-b border-line-soft" data-row={row.writable ? row.id : undefined} style="height:{h}px">
+							<div class="relative flex border-b border-line-soft" data-row={row.available ? row.id : undefined} style="height:{h}px">
 								<button
 									data-label
 									class="sticky left-0 z-10 flex shrink-0 cursor-pointer items-start gap-2 border-r border-line bg-surface px-2 text-left text-sm leading-5"
