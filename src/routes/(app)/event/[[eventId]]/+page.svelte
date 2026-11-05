@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import { Button, Checkbox, Input, Label, Select, Textarea } from 'flowbite-svelte';
 	import { X } from '@lucide/svelte';
-	import { deleteEvent, getEvent, saveEvent } from '#lib/calendar.remote';
+	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { timeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, isoToDay } from '#lib/time';
-	import type { EventDetail } from '#lib/types';
+	import type { CalEvent, EventDetail } from '#lib/types';
 
 	const eventId = $derived(page.params.eventId);
 
@@ -29,7 +30,9 @@
 		description: '',
 		resourceIds: [] as string[]
 	});
-	let tab = $state<'details' | 'resources'>('details');
+	let tab = $state<'details' | 'resources' | 'conflicts'>('details');
+	let resolving = $state<string | null>(null);
+	let moveTo = $state<Record<string, string>>({});
 	let busy = $state(false);
 	let loadError = $state<string | null>(null);
 	let saveError = $state<string | null>(null);
@@ -81,17 +84,56 @@
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
 	const eD = $derived(form.end ? isoToDay(form.end) + 1 : 0); // exclusive
+	type Conflict = { key: string; rid: string; label: string; ev: CalEvent };
+	const overlaps = (e: CalEvent) => isoToDay(e.start) < eD && isoToDay(e.end) > sD;
+	const isSelf = (e: CalEvent) => e.id === form.id || (!!form.linkId && e.linkId === form.linkId);
 	const conflicts = $derived.by(() => {
-		const out: string[] = [];
+		const out: Conflict[] = [];
 		for (const rid of form.resourceIds) {
 			const label = timeline.meta?.rows.find((r) => r.id === rid)?.label ?? rid;
-			for (const e of timeline.eventsOf(rid)) {
-				if (e.id === form.id || (form.linkId && e.linkId === form.linkId)) continue;
-				if (isoToDay(e.start) < eD && isoToDay(e.end) > sD) out.push(`${label} is already booked: ${e.title}`);
-			}
+			for (const ev of timeline.eventsOf(rid)) if (!isSelf(ev) && overlaps(ev)) out.push({ key: rid + ev.id, rid, label, ev });
 		}
 		return out;
 	});
+
+	// load the resources we may need for conflict checks / alternatives (selected rooms + their group mates)
+	$effect(() => {
+		if (!timeline.meta || !form.start || !form.end) return;
+		const groupIds = new Set(form.resourceIds.map((id) => timeline.meta!.rows.find((r) => r.id === id)?.groupId));
+		const ids = timeline.meta.rows.filter((r) => r.kind === 'resource' && (form.resourceIds.includes(r.id) || groupIds.has(r.groupId))).map((r) => r.id);
+		const a = sD,
+			b = eD;
+		if (ids.length) untrack(() => timeline.ensure(ids, a, b));
+	});
+
+	/** rooms of the same group that are free for the conflicting booking and not wanted by this booking */
+	function alternatives(c: Conflict) {
+		const rows = timeline.meta?.rows ?? [];
+		const group = rows.find((r) => r.id === c.rid)?.groupId;
+		const s0 = isoToDay(c.ev.start),
+			e0 = isoToDay(c.ev.end);
+		return rows.filter(
+			(r) =>
+				r.kind === 'resource' &&
+				r.groupId === group &&
+				r.id !== c.rid &&
+				!form.resourceIds.includes(r.id) &&
+				!timeline.eventsOf(r.id).some((e) => e.linkId !== c.ev.linkId && isoToDay(e.start) < e0 && isoToDay(e.end) > s0)
+		);
+	}
+
+	async function resolve(c: Conflict, action: 'release' | 'move') {
+		resolving = c.key;
+		saveError = null;
+		try {
+			await resolveConflict({ rowId: c.rid, eventId: c.ev.id, action, toResourceId: action === 'move' ? moveTo[c.key] : undefined });
+			timeline.invalidate();
+		} catch (e) {
+			saveError = e instanceof Error ? e.message : 'Could not update the booking';
+		} finally {
+			resolving = null;
+		}
+	}
 	const retreatGap = $derived.by(() => {
 		if (form.calendar !== 'retreats') return null;
 		for (const e of timeline.eventsOf('retreats')) {
@@ -153,16 +195,17 @@
 </div>
 
 <div class="flex gap-1 border-b border-line px-3 pt-2">
-	{#each [['details', 'Details'], ['resources', `Resources (${form.resourceIds.length})`]] as [id, label] (id)}
+	{#each [['details', 'Details'], ['resources', `Resources (${form.resourceIds.length})`], ...(conflicts.length ? [['conflicts', `Conflicts (${conflicts.length})`]] : [])] as [id, label] (id)}
 		<button class="rounded-t-md border-b-2 px-3 py-1.5 text-sm {tab === id ? 'border-accent font-bold text-accent' : 'border-transparent text-muted'}" onclick={() => (tab = id as typeof tab)}>{label}</button>
 	{/each}
 </div>
 
 <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
 	{#if loadError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{loadError}</p>{/if}
-	{#each [...conflicts, ...(retreatGap ? [retreatGap] : [])] as w (w)}
-		<p class="rounded-md bg-amber/15 px-3 py-2 text-sm">⚠ {w}</p>
-	{/each}
+	{#if conflicts.length}
+		<button type="button" class="w-full rounded-md bg-amber/15 px-3 py-2 text-left text-sm" onclick={() => (tab = 'conflicts')}>⚠ {conflicts.length} conflicting {conflicts.length === 1 ? 'booking' : 'bookings'} – release or move them</button>
+	{/if}
+	{#if retreatGap}<p class="rounded-md bg-amber/15 px-3 py-2 text-sm">⚠ {retreatGap}</p>{/if}
 
 	{#if tab === 'details'}
 		<div>
@@ -191,6 +234,20 @@
 			<Label for="f-desc" class="mb-1">Notes</Label>
 			<Textarea id="f-desc" rows={4} bind:value={form.description} />
 		</div>
+	{:else if tab === 'conflicts'}
+		<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
+		{#each conflicts as c (c.key)}
+			{@const alts = alternatives(c)}
+			<div class="space-y-2 rounded-lg border border-line p-3">
+				<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
+				<div class="flex flex-wrap items-center gap-2">
+					<Button size="xs" color="alternative" disabled={resolving === c.key} onclick={() => resolve(c, 'release')}>Release room</Button>
+					<Select class="!w-auto flex-1" size="sm" placeholder="Move to…" items={alts.map((r) => ({ value: r.id, name: r.label }))} bind:value={moveTo[c.key]} disabled={!alts.length} />
+					<Button size="xs" disabled={!moveTo[c.key] || resolving === c.key} onclick={() => resolve(c, 'move')}>Move</Button>
+				</div>
+				{#if !alts.length}<p class="text-xs text-muted">No free alternative room in this group.</p>{/if}
+			</div>
+		{/each}
 	{:else}
 		{#each resourceGroups as g (g.id)}
 			<fieldset>

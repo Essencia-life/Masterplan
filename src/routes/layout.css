@@ -13,7 +13,7 @@
  */
 @theme {
 	--font-sans: 'Alegreya', 'Iowan Old Style', Georgia, serif;
-	--font-display: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+	--font-display: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
 	/* brand colours */
 	--color-moss: #6b8250;
@@ -63,6 +63,7 @@
 	--app-today: rgb(207 151 43 / 0.2);
 	--app-weekend: rgb(110 90 50 / 0.07);
 	--app-shadow: 0 12px 32px rgb(59 45 32 / 0.22);
+	--app-sheet-shadow: -10px 0 32px rgb(59 45 32 / 0.28), 0 -8px 32px rgb(59 45 32 / 0.28);
 }
 
 .dark {
@@ -77,6 +78,7 @@
 	--app-today: rgb(230 180 87 / 0.22);
 	--app-weekend: rgb(255 240 200 / 0.05);
 	--app-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+	--app-sheet-shadow: -10px 0 32px rgb(0 0 0 / 0.65), 0 -8px 32px rgb(0 0 0 / 0.65);
 	color-scheme: dark;
 }
 
@@ -90,6 +92,7 @@
 	--color-muted: var(--app-muted);
 	--color-accent: var(--app-accent);
 	--shadow-panel: var(--app-shadow);
+	--shadow-sheet: var(--app-sheet-shadow);
 }
 
 @layer base {

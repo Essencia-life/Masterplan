@@ -194,4 +194,43 @@ export async function listEvents(rowId: string, timeMin: string, timeMax: string
 	return out;
 }
 
+/**
+ * Finds the organizer's event for a bar the user sees. Main calendar rows are the organizer
+ * themselves; for a resource calendar the copy is matched by iCalUID (and, for series, by the
+ * instance that starts on the same day).
+ */
+export async function resolveOrganizer(rowId: string, eventId: string) {
+	if (isMainKey(rowId)) return { calendarId: await resolveCalendarId(rowId), eventId };
+	const api = calendar();
+	const copy = (await api.events.get({ calendarId: await resolveCalendarId(rowId), eventId })).data;
+	const day = (copy.start?.dateTime ?? copy.start?.date ?? '').slice(0, 10);
+	if (!copy.iCalUID || !day) throw new Error('Event cannot be traced to its organizer');
+	for (const key of MAIN_KEYS) {
+		const cid = mainCalendarId(key);
+		if (!cid) continue;
+		const found = await api.events.list({ calendarId: cid, iCalUID: copy.iCalUID }).catch(() => null);
+		const master = found?.data.items?.[0];
+		if (!master?.id) continue;
+		if (!copy.recurringEventId) return { calendarId: cid, eventId: master.id };
+		const t = Date.parse(day + 'T00:00:00Z');
+		const inst = await api.events.instances({
+			calendarId: cid,
+			eventId: master.id,
+			timeMin: new Date(t - 86_400_000).toISOString(),
+			timeMax: new Date(t + 2 * 86_400_000).toISOString()
+		});
+		const hit = inst.data.items?.find((i) => (i.start?.dateTime ?? i.start?.date ?? '').slice(0, 10) === day);
+		if (hit?.id) return { calendarId: cid, eventId: hit.id };
+	}
+	throw new Error('Organizer event not found in the configured calendars');
+}
+
+const shiftStamp = (v: string, days: number) => addDays(v.slice(0, 10), days) + v.slice(10);
+
+export function shiftTimes(e: calendar_v3.Schema$Event, days: number) {
+	const shift = (t?: calendar_v3.Schema$EventDateTime) =>
+		t?.date ? { date: shiftStamp(t.date, days) } : { dateTime: shiftStamp(t!.dateTime!, days), timeZone: t?.timeZone ?? undefined };
+	return { start: shift(e.start ?? undefined), end: shift(e.end ?? undefined) };
+}
+
 export { addDays };

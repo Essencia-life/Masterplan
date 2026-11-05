@@ -8,7 +8,9 @@ import {
 	isMainKey,
 	listEvents,
 	loadMeta,
-	resolveCalendarId
+	resolveCalendarId,
+	resolveOrganizer,
+	shiftTimes
 } from '#lib/server/google';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -117,5 +119,41 @@ export const deleteEvent = command(
 	async ({ calendar: key, id }) => {
 		const calendarId = await resolveCalendarId(key);
 		await calendar().events.delete({ calendarId, eventId: id, sendUpdates: 'none' });
+	}
+);
+
+/** Drag & drop: shift an event (and with it all linked resource bookings) by whole days. */
+export const moveEvent = command(
+	z.object({ rowId: z.string(), eventId: z.string(), days: z.number().int().min(-3650).max(3650) }),
+	async ({ rowId, eventId, days }) => {
+		if (days === 0) return;
+		const target = await resolveOrganizer(rowId, eventId);
+		const api = calendar().events;
+		const ev = (await api.get(target)).data;
+		await api.patch({ ...target, requestBody: shiftTimes(ev, days), sendUpdates: 'none' });
+	}
+);
+
+/**
+ * Conflict resolution for a booking sitting in a resource calendar. The event itself stays;
+ * only the room reservation changes (series: an exception for that single instance).
+ */
+export const resolveConflict = command(
+	z.object({
+		rowId: z.string(),
+		eventId: z.string(),
+		action: z.enum(['release', 'move']),
+		toResourceId: z.string().optional()
+	}),
+	async ({ rowId, eventId, action, toResourceId }) => {
+		const { resourceIds } = await loadMeta();
+		if (!resourceIds.has(rowId)) error(400, 'Not a resource calendar');
+		if (action === 'move' && (!toResourceId || !resourceIds.has(toResourceId))) error(400, 'Pick a target room');
+		const target = await resolveOrganizer(rowId, eventId);
+		const api = calendar().events;
+		const ev = (await api.get(target)).data;
+		const rest = (ev.attendees ?? []).filter((a) => a.email !== rowId);
+		const attendees = action === 'release' ? rest : [...rest.filter((a) => a.email !== toResourceId), { email: toResourceId!, resource: true }];
+		await api.patch({ ...target, requestBody: { attendees }, sendUpdates: 'none' });
 	}
 );
