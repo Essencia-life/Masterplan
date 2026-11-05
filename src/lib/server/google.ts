@@ -29,15 +29,35 @@ const GROUPS: GroupInfo[] = [
 
 export const isMainKey = (v: string): v is MainKey => (MAIN_KEYS as string[]).includes(v);
 
+/**
+ * GOOGLE_SERVICE_ACCOUNT_JSON may be: the JSON itself, the JSON as base64,
+ * or just the PEM private key ("-----BEGIN PRIVATE KEY-----", multi-line or with literal \\n)
+ * together with GOOGLE_SERVICE_ACCOUNT_EMAIL.
+ */
+function credentials() {
+	let raw = env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+	if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not set');
+	if (raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1);
+	if (!raw.startsWith('{') && !raw.includes('BEGIN')) {
+		const decoded = Buffer.from(raw, 'base64').toString('utf8').trim();
+		if (decoded.startsWith('{') || decoded.includes('BEGIN')) raw = decoded;
+	}
+	const fixNewlines = (k: string) => k.replace(/\\n/g, '\n');
+	if (raw.startsWith('{')) {
+		const json = JSON.parse(raw);
+		return { email: json.client_email as string, key: fixNewlines(json.private_key as string) };
+	}
+	if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL) throw new Error('GOOGLE_SERVICE_ACCOUNT_EMAIL is required when only the private key is provided');
+	return { email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL, key: fixNewlines(raw) };
+}
+
 let client: calendar_v3.Calendar | undefined;
 export function calendar() {
 	if (client) return client;
-	const raw = env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
-	if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not set');
-	const json = JSON.parse(raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8'));
+	const { email, key } = credentials();
 	const auth = new google.auth.JWT({
-		email: json.client_email,
-		key: json.private_key,
+		email,
+		key,
 		scopes: ['https://www.googleapis.com/auth/calendar'],
 		subject: env.GOOGLE_IMPERSONATE_USER || undefined
 	});
