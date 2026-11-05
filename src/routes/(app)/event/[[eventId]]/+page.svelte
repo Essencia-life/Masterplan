@@ -102,7 +102,10 @@
 
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
-	const eD = $derived(form.end ? isoToDay(form.end) + 1 : 0); // exclusive
+	// exclusive end day, same rule as the timeline bars: a timed event ending exactly at 00:00 does not occupy that day
+	const eD = $derived(
+		!form.end ? 0 : !form.allDay && form.endTime === '00:00' && form.end > form.start ? isoToDay(form.end) : isoToDay(form.end) + 1
+	);
 	type Conflict = { key: string; rid: string; label: string; ev: CalEvent };
 	const overlaps = (e: CalEvent) => isoToDay(e.start) < eD && isoToDay(e.end) > sD;
 	const isSelf = (e: CalEvent) => e.id === form.id || (!!form.linkId && e.linkId === form.linkId);
