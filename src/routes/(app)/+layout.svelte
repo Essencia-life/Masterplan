@@ -4,12 +4,15 @@
 	import { onMount, untrack } from 'svelte';
 	import type { LayoutProps } from './$types';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
-	import { calendarIdFromSlug, calendarSlug, isResourceCalendar } from '#lib/calendar-id';
-	import { timeline } from '#lib/timeline.svelte';
+	import { calendarIdFromSlug, calendarSlug, isResourceId } from '#lib/calendar-id';
+	import { Timeline, setTimeline } from '#lib/timeline.svelte';
 	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
 
 	let { children, data }: LayoutProps = $props();
+	const timeline = new Timeline(data.meta, data.metaError);
+	setTimeline(timeline);
+	$effect.pre(() => timeline.setMeta(data.meta, data.metaError));
 	const signInUrl = $derived(`/auth/login?returnTo=${encodeURIComponent(page.url.pathname + page.url.search)}`);
 
 	let innerWidth = $state(1024);
@@ -48,7 +51,6 @@
 		const ids = openRowIds;
 		const a = lo;
 		const b = hi;
-		void timeline.version;
 		if (ids.length) untrack(() => timeline.ensure(ids, a, b));
 	});
 
@@ -57,7 +59,7 @@
 		if (timeline.hidden.has(row.id)) return { items: [], lanes: 1 };
 		const raw = timeline
 			.eventsOf(row.id)
-			.map((ev) => ({ ev, s: isoToDay(ev.start), e: isoToDay(ev.end) }))
+			.map((ev) => ({ ev, s: ev.s, e: ev.e }))
 			.filter((x) => x.e > lo - BUF && x.s < hi + BUF)
 			.sort((a, b) => a.s - b.s || b.e - a.e);
 		const laneEnd: number[] = [];
@@ -186,7 +188,7 @@
 		const a = Math.min(d.a, d.b),
 			b = Math.max(d.a, d.b);
 		const range = `from=${dayToIso(a)}&to=${dayToIso(b + 1)}`;
-		goto(isResourceCalendar(d.rowId) ? `/event?row=${encodeURIComponent(d.rowId)}&${range}` : `/event/${calendarSlug(d.rowId)}?${range}`, { reset: false });
+		goto(isResourceId(d.rowId) ? `/event?row=${encodeURIComponent(d.rowId)}&${range}` : `/event/${calendarSlug(d.rowId)}?${range}`, { reset: false });
 	}
 	function onCancel() {
 		clearTimeout(pressTimer);
@@ -242,7 +244,7 @@
 	const go = (weeks: number) => scroller?.scrollBy({ left: weeks * 7 * DAYW, behavior: 'smooth' });
 
 	onMount(() => {
-		timeline.loadMeta();
+		timeline.restore();
 		scrollToDay(TODAY, false);
 		scrollX = scroller!.scrollLeft;
 		const ro = new ResizeObserver(() => (viewW = scroller!.clientWidth));

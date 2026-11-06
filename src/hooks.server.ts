@@ -9,8 +9,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 			event.locals.user = { email: s.email, name: s.name };
 			event.locals.refreshToken = s.refreshToken;
 		}
-	} catch {
-		// SESSION_SECRET missing: treat everyone as anonymous
+	} catch (e) {
+		// SESSION_SECRET missing or invalid: everybody is anonymous, but say so
+		console.error('session unavailable:', e instanceof Error ? e.message : e);
 	}
 	return resolve(event);
 };

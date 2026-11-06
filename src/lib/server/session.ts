@@ -35,11 +35,12 @@ export function decrypt<T>(token: string | undefined): T | null {
 	}
 }
 
-const base = (secure: boolean) => ({ path: '/', httpOnly: true, sameSite: 'lax' as const, secure });
+// behind a TLS-terminating proxy url.protocol is often http, so everything except local dev is secure
+const base = (url: URL) => ({ path: '/', httpOnly: true, sameSite: 'lax' as const, secure: url.protocol === 'https:' || !import.meta.env.DEV });
 
 export function setSession(cookies: Cookies, url: URL, s: Omit<Session, 'exp'>) {
 	const exp = Date.now() + SESSION_DAYS * 86_400_000;
-	cookies.set(SESSION_COOKIE, encrypt({ ...s, exp }), { ...base(url.protocol === 'https:'), maxAge: SESSION_DAYS * 86_400 });
+	cookies.set(SESSION_COOKIE, encrypt({ ...s, exp }), { ...base(url), maxAge: SESSION_DAYS * 86_400 });
 }
 
 export function readSession(cookies: Cookies): Session | null {
@@ -51,5 +52,5 @@ export const clearSession = (cookies: Cookies) => cookies.delete(SESSION_COOKIE,
 
 /** short-lived cookie that carries state + PKCE verifier through the Google redirect */
 export function setOAuthState(cookies: Cookies, url: URL, v: { state: string; verifier: string; returnTo: string }) {
-	cookies.set(OAUTH_COOKIE, encrypt(v), { ...base(url.protocol === 'https:'), maxAge: 600 });
+	cookies.set(OAUTH_COOKIE, encrypt(v), { ...base(url), maxAge: 600 });
 }

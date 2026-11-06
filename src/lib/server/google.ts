@@ -6,10 +6,11 @@ import { createHash } from 'node:crypto';
 import { cachedRows, invalidateRows } from '#lib/server/cache';
 import { clearSession } from '#lib/server/session';
 import { oauthClient } from '#lib/server/oauth';
+import { addDays, dayOf, eventRange, localDay, localTime, normalize, parseCalendarName, parseResourceName } from '#lib/server/parse';
+import { isResourceId } from '#lib/calendar-id';
 import type { CalEvent, CalendarMeta, Fresh, GroupInfo, RowInfo } from '#lib/types';
 
-const RESOURCE_SUFFIX = '@resource.calendar.google.com';
-export const isResourceId = (id: string) => id.endsWith(RESOURCE_SUFFIX);
+export { isResourceId, addDays, dayOf, eventRange, localDay, localTime, normalize, parseResourceName };
 
 /**
  * GOOGLE_SERVICE_ACCOUNT_JSON may be: the JSON itself, the JSON as base64,
@@ -80,23 +81,6 @@ export function serviceCalendar() {
 	return client;
 }
 
-/** "{group}-{floor}-{name} (50)" → group, floor, name. The capacity in brackets is dropped. */
-export function parseResourceName(raw: string) {
-	const clean = raw.replace(/\s*\(\d+\)\s*$/, '').trim();
-	const parts = clean.split(/\s*-\s*/);
-	if (parts.length >= 3 && /^\d+$/.test(parts[1])) return { group: parts[0], floor: parts[1], name: parts.slice(2).join('-') };
-	if (parts.length >= 2) return { group: parts[0], floor: '', name: parts.slice(1).join('-') };
-	return { group: 'Other', floor: '', name: clean };
-}
-
-/** Calendars are named "{group}/{name}"; anything else is not part of the booking tool. */
-function parseCalendarName(raw: string) {
-	const i = raw.indexOf('/');
-	if (i < 0) return null;
-	const group = raw.slice(0, i).trim();
-	const name = raw.slice(i + 1).trim();
-	return group && name ? { group, name } : null;
-}
 
 const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
@@ -169,45 +153,6 @@ export async function resolveCalendarId(rowId: string) {
 	return rowId;
 }
 
-export const TIME_ZONE = 'Europe/Lisbon';
-const fmtDate = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
-const fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-/** Calendar day (YYYY-MM-DD) in the app's time zone. Resource calendars return times in their own zone, so never slice the string. */
-export const localDay = (v?: string | null) => (!v ? '' : v.length === 10 ? v : fmtDate.format(new Date(v)));
-export const localTime = (v: string) => fmtTime.format(new Date(v));
-export const dayOf = (t?: calendar_v3.Schema$EventDateTime | null) => localDay(t?.date ?? t?.dateTime);
-
-const addDays = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86_400_000).toISOString().slice(0, 10);
-
-export function normalize(e: calendar_v3.Schema$Event, rowId: string): CalEvent | null {
-	if (e.status === 'cancelled' || !e.id) return null;
-	// a declined room booking (resource said no) must not show up in the resource calendar
-	if (isResourceId(rowId) && e.attendees?.some((a) => (a.self || a.email === rowId) && a.responseStatus === 'declined')) return null;
-	const start = dayOf(e.start);
-	let end: string;
-	if (e.end?.date) end = e.end.date;
-	else if (e.end?.dateTime) {
-		const d = localDay(e.end.dateTime);
-		end = localTime(e.end.dateTime) === '00:00' ? d : addDays(d, 1);
-	} else end = addDays(start, 1);
-	if (!start) return null;
-	if (end <= start) end = addDays(start, 1);
-	return {
-		id: e.id,
-		rowId,
-		linkId: e.iCalUID ?? e.id,
-		title: e.summary ?? '(no title)',
-		start,
-		end,
-		status: e.status === 'tentative' ? 'tentative' : 'confirmed',
-		description: e.description ?? '',
-		fromLocal: e.start?.dateTime ? `${localDay(e.start.dateTime)}T${localTime(e.start.dateTime)}` : undefined,
-		toLocal: e.end?.dateTime ? `${localDay(e.end.dateTime)}T${localTime(e.end.dateTime)}` : undefined,
-		declinedRooms: isResourceId(rowId)
-			? undefined
-			: (e.attendees ?? []).filter((a) => a.resource && a.responseStatus === 'declined').map((a) => a.email!)
-	};
-}
 
 export async function listEvents(rowId: string, timeMin: string, timeMax: string) {
 	const calendarId = await resolveCalendarId(rowId);
@@ -286,7 +231,6 @@ export function eventsForRows(rowIds: string[], from: string, to: string) {
 	}));
 }
 
-export { addDays };
 
 
 // ---------- signed-in user (OAuth) ----------
@@ -322,7 +266,8 @@ export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): 
 			error(401, 'Your session expired, please sign in again');
 		}
 		const status = (e as { code?: number }).code;
-		if (status === 403 || status === 404) error(403, 'You do not have permission for this calendar');
+		if (status === 403) error(403, 'You do not have permission for this calendar');
+		if (status === 404) error(404, 'Not found');
 		throw e;
 	}
 }

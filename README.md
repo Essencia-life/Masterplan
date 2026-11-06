@@ -73,7 +73,7 @@ npm install
 npm run dev        # http://localhost:5173
 npm run check      # svelte-check
 npm run lint
-npm run test
+npm run test       # vitest: pure functions in time, calendar-id, server/parse
 npm run build
 ```
 
@@ -95,14 +95,16 @@ npm run build
 | --- | --- |
 | `src/routes/(app)/+layout.svelte` | timeline: virtual window, rows, lanes, selection gestures, group reordering |
 | `src/routes/(app)/event/[[calendarId]]/[[eventId]]/+page.svelte` | booking panel and conflict handling |
-| `src/lib/calendar.remote.ts` | remote functions (zod): `getCalendars`, `getEvents`, `getEvent`, `saveEvent`, `deleteEvent`, `resolveConflict`, `refreshRows` |
-| `src/lib/server/google.ts` | Google clients, row model, event normalisation, auth helpers (service account vs. user) |
+| `src/lib/calendar.remote.ts` | remote functions (zod): `getEvents`, `getEvent`, `saveEvent`, `deleteEvent`, `resolveConflict`, `refreshRows` |
+| `src/lib/server/google.ts` | Google clients, row model (calendar list), event reads, auth helpers (service account vs. user) |
+| `src/lib/server/parse.ts` | pure functions: calendar/room name schemes, time zone helpers, event normalisation (unit tested) |
+| `src/lib/server/cache.ts` | Upstash/in-memory row cache |
 | `src/lib/server/session.ts`, `oauth.ts` | encrypted cookie session, OAuth client |
-| `src/lib/timeline.svelte.ts` | client cache of events (per row and 90-day chunk), expanded groups, hidden rows, group order |
-| `src/lib/time.ts` | day maths (days since a base date), moon phase, wall-clock minutes |
+| `src/lib/timeline.svelte.ts` | `Timeline` state, one instance per page load via Svelte context (`setTimeline`/`getTimeline`): events per row, expanded groups, hidden rows, group order |
+| `src/lib/time.ts` | the app time zone, day maths (days since a base date), end-of-event rule shared by server and panel, moon phase, wall-clock minutes |
 | `src/hooks.server.ts` | puts the signed-in user on `event.locals` |
 
-Data flow: the layout asks `getEvents` for the rows of expanded groups for the visible window (in 90-day chunks). Mutations return the fresh state of every touched row in the same response (single flight) and the client merges it into its cache. Room copies of a new booking are shown as tentative placeholders and confirmed by a delayed re-read, because Google creates them asynchronously.
+Data flow: the layout load (`+layout.server.ts`) delivers rows and groups with the page. The layout then asks `getEvents` for the rows of expanded groups for the visible window (in 90-day chunks). Mutations return the fresh state of every touched row in the same response (single flight) and the client merges it into its cache. Room copies of a new booking are shown as tentative placeholders and confirmed by a delayed re-read, because Google creates them asynchronously.
 
 ## Caching and quota
 
@@ -113,7 +115,7 @@ Data flow: the layout asks `getEvents` for the rows of expanded groups for the v
 
 ## Browser storage
 
-`localStorage`: `expandedGroups`, `hiddenRows`, `groupOrder`. All reads and writes are wrapped; the app works without storage.
+`localStorage`: `expandedGroups`, `hiddenRows`, `groupOrder`. Read once after mount (server render and hydration use the defaults), all reads and writes are wrapped; the app works without storage.
 
 ## Status and limits
 

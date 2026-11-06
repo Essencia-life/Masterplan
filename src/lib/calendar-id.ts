@@ -1,5 +1,5 @@
 const GROUP_SUFFIX = '@group.calendar.google.com';
-const RESOURCE_SUFFIX = '@resource.calendar.google.com';
+export const RESOURCE_SUFFIX = '@resource.calendar.google.com';
 
 /** URL segment for a calendar id: the common "@group.calendar.google.com" suffix is dropped. */
 export function calendarSlug(id: string) {
@@ -13,4 +13,4 @@ export function calendarIdFromSlug(slug?: string | null) {
 	return v.includes('@') ? v : v + GROUP_SUFFIX;
 }
 
-export const isResourceCalendar = (id: string) => id.endsWith(RESOURCE_SUFFIX);
+export const isResourceId = (id: string) => id.endsWith(RESOURCE_SUFFIX);

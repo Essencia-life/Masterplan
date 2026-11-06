@@ -1,9 +1,15 @@
 export const DAY_MS = 86_400_000;
-const now = new Date();
+/** The one time zone of the app: everything shown and written is wall-clock time here, for server and browser alike. */
+export const TIME_ZONE = 'Europe/Lisbon';
+
+/** today's date (YYYY-MM-DD) in TIME_ZONE */
+const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const epochDay = (iso: string) => Math.round(Date.parse(iso + 'T00:00:00Z') / DAY_MS);
+
 /** epoch day of the first timeline day (1 Jan of last year) */
-export const BASE = Date.UTC(now.getUTCFullYear() - 1, 0, 1) / DAY_MS;
+export const BASE = Date.UTC(Number(todayIso.slice(0, 4)) - 1, 0, 1) / DAY_MS;
 export const N_DAYS = 1500;
-export const TODAY = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY_MS) - BASE;
+export const TODAY = epochDay(todayIso) - BASE;
 
 /** minutes since BASE midnight for a local date + 'HH:mm' (wall clock, no time zone maths) */
 export const toMinutes = (isoDate: string, hhmm = '00:00') => {
@@ -14,6 +20,16 @@ export const toMinutes = (isoDate: string, hhmm = '00:00') => {
 export const dayToDate = (i: number) => new Date((BASE + i) * DAY_MS);
 export const dayToIso = (i: number) => dayToDate(i).toISOString().slice(0, 10);
 export const isoToDay = (iso: string) => Math.round(Date.parse(iso.slice(0, 10) + 'T00:00:00Z') / DAY_MS) - BASE;
+export const addDaysIso = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY_MS).toISOString().slice(0, 10);
+
+/**
+ * First day NOT occupied by an event (exclusive end). A timed event that ends exactly at 00:00 on a later
+ * day does not occupy that day; otherwise the end day is occupied. One rule for server and panel.
+ */
+export function exclusiveEndIso(startDate: string, endDate: string, endTime: string | null) {
+	return endTime === '00:00' && endDate > startDate ? endDate : addDaysIso(endDate, 1);
+}
+
 export const clampDay = (i: number) => Math.max(0, Math.min(N_DAYS - 1, i));
 
 const SYNODIC = 29.530588853;

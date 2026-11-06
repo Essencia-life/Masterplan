@@ -3,7 +3,6 @@ import { command, query } from '$app/server';
 import * as z from 'zod';
 import type { EventDetail } from '#lib/types';
 import {
-	addDays,
 	asUser,
 	assertCanWrite,
 	dayOf,
@@ -12,19 +11,16 @@ import {
 	freshRows,
 	localDay,
 	localTime,
-	TIME_ZONE,
+	eventRange,
 	loadMeta,
 	requireUser,
 	resolveCalendarId,
 	resolveOrganizer,
-	rowsForVisitor,
 	serviceCalendar
 } from '#lib/server/google';
+import { TIME_ZONE } from '#lib/time';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-
-/** Rows, groups and colours (resource calendars discovered dynamically). */
-export const getCalendars = query(async () => rowsForVisitor());
 
 /** Only the rows the client asks for (= expanded groups) are fetched. */
 export const getEvents = query(
@@ -44,22 +40,21 @@ export const getEvent = query(
 	async ({ eventId, calendar: hint }): Promise<EventDetail> => {
 		requireUser();
 		const { meta } = await loadMeta();
-		const order = [hint, ...meta.rows.filter((r) => r.kind === 'calendar' && r.available).map((r) => r.id)].filter(
-			(x): x is string => !!x
-		);
-		for (const rowId of [...new Set(order)]) {
+		const calendars = meta.rows.filter((r) => r.kind === 'calendar' && r.available).map((r) => r.id);
+		// the URL names the calendar, so normally exactly one lookup; scan all calendars only without a hint
+		const order = hint ? [hint] : calendars;
+		for (const rowId of order) {
 			try {
 				const calendarId = await resolveCalendarId(rowId);
 				let ev = (await serviceCalendar().events.get({ calendarId, eventId })).data;
 				let ownerRow = rowId;
 				// a resource copy: jump to the organizer's event so edits go to the right place
 				if (ev.organizer && !ev.organizer.self && ev.iCalUID) {
-					for (const r of meta.rows.filter((x) => x.kind === 'calendar' && x.available)) {
-						const id = await resolveCalendarId(r.id);
-						const found = await serviceCalendar().events.list({ calendarId: id, iCalUID: ev.iCalUID });
+					for (const rid of calendars) {
+						const found = await serviceCalendar().events.list({ calendarId: await resolveCalendarId(rid), iCalUID: ev.iCalUID });
 						if (found.data.items?.[0]) {
 							ev = found.data.items[0];
-							ownerRow = r.id;
+							ownerRow = rid;
 							break;
 						}
 					}
@@ -129,8 +124,7 @@ export const saveEvent = command(saveSchema, async (input) => {
 			: api.events.insert({ calendarId, requestBody, sendUpdates: 'none' })
 	);
 	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
-	const oldStart = (dayOf(before?.start) || input.start);
-	const oldEnd = (dayOf(before?.end) || input.end);
+	const [oldStart, oldEnd] = before ? eventRange(before) : [input.start, input.end];
 	const fresh = await freshRows(
 		[input.calendar, ...oldRooms, ...input.resourceIds],
 		[oldStart, input.start].sort()[0],
@@ -157,8 +151,7 @@ export const deleteEvent = command(
 		const before = (await serviceCalendar().events.get({ calendarId, eventId: id })).data;
 		await asUser((api) => api.events.delete({ calendarId, eventId: id, sendUpdates: 'none' }));
 		const rooms = (before.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
-		const s = dayOf(before.start);
-		const e = (dayOf(before.end) || s);
+		const [s, e] = eventRange(before);
 		return { fresh: await freshRows([key, ...rooms], s, e) };
 	}
 );
@@ -185,8 +178,7 @@ export const resolveConflict = command(
 		const rest = (ev.attendees ?? []).filter((a) => a.email !== rowId);
 		const attendees = action === 'release' ? rest : [...rest.filter((a) => a.email !== toResourceId), { email: toResourceId!, resource: true }];
 		await asUser((api) => api.events.patch({ calendarId: target.calendarId, eventId: target.eventId, requestBody: { attendees }, sendUpdates: 'none' }));
-		const s = dayOf(ev.start);
-		const e = (dayOf(ev.end) || s);
+		const [s, e] = eventRange(ev);
 		return { fresh: await freshRows([target.rowKey, rowId, ...(toResourceId ? [toResourceId] : [])], s, e) };
 	}
 );

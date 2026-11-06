@@ -1,10 +1,15 @@
+import { getContext, setContext } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-import { getCalendars, getEvents, refreshRows } from '#lib/calendar.remote';
+import { getEvents, refreshRows } from '#lib/calendar.remote';
 import type { CalEvent, CalendarMeta, Fresh } from '#lib/types';
 import { dayToIso, isoToDay } from '#lib/time';
 
 export const CHUNK = 90;
 const key = (rowId: string, chunk: number) => `${rowId}|${chunk}`;
+
+/** an event with its day span (start inclusive, end exclusive) precomputed */
+export type Indexed = CalEvent & { s: number; e: number };
+const index = (ev: CalEvent): Indexed => ({ ...ev, s: isoToDay(ev.start), e: isoToDay(ev.end) });
 
 function readList(key: string): string[] | null {
 	try {
@@ -25,22 +30,43 @@ function writeList(key: string, values: Iterable<string>) {
 	}
 }
 
-class Timeline {
+export class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
-	/** collapsed groups are never fetched */
-	/** null = nothing stored yet, so the defaults apply on first load */
-	private storedExpanded = readList('expandedGroups');
-	expanded = new SvelteSet<string>(this.storedExpanded ?? []);
-	private chunks = new SvelteMap<string, CalEvent[]>();
-	private pending = new Set<string>();
 	loading = $state(0);
-	private initialised = false;
+	/** collapsed groups are never fetched; defaults to the groups with calendars until restore() ran */
+	expanded = new SvelteSet<string>();
 	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
-	hidden = new SvelteSet<string>(readList('hiddenRows') ?? []);
-
+	hidden = new SvelteSet<string>();
 	/** manual group order (group ids), remembered per browser */
-	groupOrder = $state<string[]>(readList('groupOrder') ?? []);
+	groupOrder = $state<string[]>([]);
+	/** events per row, deduplicated, kept in sync by ensure/applyFresh/addOptimistic */
+	private byRow = new SvelteMap<string, Indexed[]>();
+	private loaded = new Set<string>();
+	private pending = new Set<string>();
+
+	constructor(meta: CalendarMeta | null, error: string | null = null) {
+		this.setMeta(meta, error);
+	}
+
+	/** (re)apply server data; keeps the user's open/closed state */
+	setMeta(meta: CalendarMeta | null, error: string | null = null) {
+		const first = !this.meta && meta;
+		this.meta = meta;
+		this.error = error;
+		if (first) for (const r of meta.rows) if (r.kind === 'calendar') this.expanded.add(r.groupId);
+	}
+
+	/** read localStorage; call from onMount only (server render and hydration use the defaults) */
+	restore() {
+		const expanded = readList('expandedGroups');
+		if (expanded) {
+			this.expanded.clear();
+			for (const id of expanded) this.expanded.add(id);
+		}
+		for (const id of readList('hiddenRows') ?? []) this.hidden.add(id);
+		this.groupOrder = readList('groupOrder') ?? [];
+	}
 
 	/** groups in the user's order; groups without a stored position keep their default order at the end */
 	orderGroups<T extends { id: string }>(groups: T[]): T[] {
@@ -68,22 +94,6 @@ class Timeline {
 		else this.hidden.add(rowId);
 		writeList('hiddenRows', this.hidden);
 	}
-	/** bumped by invalidate() so effects refetch */
-	version = $state(0);
-
-	async loadMeta() {
-		try {
-			this.meta = await getCalendars();
-			// first load: open the groups that hold calendars
-			if (!this.initialised) {
-				this.initialised = true;
-				if (!this.storedExpanded) for (const r of this.meta.rows) if (r.kind === 'calendar') this.expanded.add(r.groupId);
-			}
-			this.error = null;
-		} catch (e) {
-			this.error = e instanceof Error ? e.message : 'Could not load calendars';
-		}
-	}
 
 	toggle(groupId: string) {
 		if (this.expanded.has(groupId)) this.expanded.delete(groupId);
@@ -91,14 +101,16 @@ class Timeline {
 		writeList('expandedGroups', this.expanded);
 	}
 
-	/** events of one row (deduplicated across chunks) */
-	eventsOf(rowId: string): CalEvent[] {
-		const seen = new Map<string, CalEvent>();
-		for (const [k, list] of this.chunks) {
-			if (!k.startsWith(rowId + '|')) continue;
-			for (const e of list) seen.set(e.id, e);
-		}
-		return [...seen.values()];
+	/** events of one row */
+	eventsOf(rowId: string): Indexed[] {
+		return this.byRow.get(rowId) ?? [];
+	}
+
+	/** replace the row's events overlapping [from, to) by `events`, or add `events` */
+	private put(rowId: string, events: CalEvent[], window?: [number, number]) {
+		const kept = (this.byRow.get(rowId) ?? []).filter((x) => !window || !(x.s < window[1] && x.e > window[0]));
+		const ids = new Set(events.map((e) => e.id));
+		this.byRow.set(rowId, [...kept.filter((x) => !ids.has(x.id)), ...events.map(index)]);
 	}
 
 	/**
@@ -106,35 +118,13 @@ class Timeline {
 	 * Nothing is cleared, so the timeline does not flicker or refetch.
 	 */
 	applyFresh(fresh: Fresh) {
-		const wFrom = isoToDay(fresh.from);
-		const wTo = isoToDay(fresh.to);
-		const overlapsWindow = (e: CalEvent) => isoToDay(e.start) < wTo && isoToDay(e.end) > wFrom;
-		for (const [rowId, events] of Object.entries(fresh.rows)) {
-			for (const k of [...this.chunks.keys()]) {
-				if (!k.startsWith(rowId + '|')) continue;
-				const c = Number(k.split('|')[1]);
-				const cFrom = c * CHUNK;
-				const cTo = cFrom + CHUNK;
-				const inChunk = (e: CalEvent) => isoToDay(e.start) < cTo && isoToDay(e.end) > cFrom;
-				const kept = this.chunks.get(k)!.filter((e) => !overlapsWindow(e));
-				this.chunks.set(k, [...kept, ...events.filter(inChunk)]);
-			}
-		}
+		const window: [number, number] = [isoToDay(fresh.from), isoToDay(fresh.to)];
+		for (const [rowId, events] of Object.entries(fresh.rows)) if (this.byRow.has(rowId)) this.put(rowId, events, window);
 	}
 
 	/** Show events immediately (e.g. room bookings Google has not mirrored yet); replaced by the next applyFresh. */
 	addOptimistic(events: CalEvent[]) {
-		for (const ev of events) {
-			const s = isoToDay(ev.start);
-			const e = isoToDay(ev.end);
-			for (const k of [...this.chunks.keys()]) {
-				if (!k.startsWith(ev.rowId + '|')) continue;
-				const c = Number(k.split('|')[1]);
-				if (s >= (c + 1) * CHUNK || e <= c * CHUNK) continue;
-				const list = this.chunks.get(k)!;
-				if (!list.some((x) => x.id === ev.id)) this.chunks.set(k, [...list, ev]);
-			}
-		}
+		for (const ev of events) if (this.byRow.has(ev.rowId)) this.put(ev.rowId, [ev]);
 	}
 
 	/**
@@ -155,12 +145,6 @@ class Timeline {
 		}
 	}
 
-	invalidate() {
-		this.chunks.clear();
-		this.pending.clear();
-		this.version++;
-	}
-
 	/** Fetch missing chunks for the given rows within the day window. */
 	async ensure(rowIds: string[], lo: number, hi: number) {
 		const c0 = Math.floor(lo / CHUNK);
@@ -169,7 +153,7 @@ class Timeline {
 		for (const rowId of rowIds)
 			for (let c = c0; c <= c1; c++) {
 				const k = key(rowId, c);
-				if (this.chunks.has(k) || this.pending.has(k)) continue;
+				if (this.loaded.has(k) || this.pending.has(k)) continue;
 				this.pending.add(k);
 				todo.set(c, [...(todo.get(c) ?? []), rowId]);
 			}
@@ -178,10 +162,15 @@ class Timeline {
 				this.loading++;
 				try {
 					const events = await getEvents({ rowIds: ids, from: dayToIso(c * CHUNK), to: dayToIso((c + 1) * CHUNK) });
-					for (const id of ids) this.chunks.set(key(id, c), events.filter((e) => e.rowId === id));
+					for (const id of ids) {
+						const mine = events.filter((e) => e.rowId === id);
+						// an empty chunk still registers the row, so mutations can merge into it
+						if (mine.length || !this.byRow.has(id)) this.put(id, mine);
+						this.loaded.add(key(id, c));
+					}
 				} catch (e) {
 					this.error = e instanceof Error ? e.message : 'Could not load events';
-					for (const id of ids) this.chunks.set(key(id, c), []); // avoid refetch loops; reload to retry
+					for (const id of ids) this.loaded.add(key(id, c)); // avoid refetch loops; reload to retry
 				} finally {
 					for (const id of ids) this.pending.delete(key(id, c));
 					this.loading--;
@@ -191,4 +180,6 @@ class Timeline {
 	}
 }
 
-export const timeline = new Timeline();
+const KEY = Symbol('timeline');
+export const setTimeline = (t: Timeline) => setContext(KEY, t);
+export const getTimeline = () => getContext<Timeline>(KEY);

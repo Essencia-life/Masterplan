@@ -6,9 +6,11 @@
 	import { X } from '@lucide/svelte';
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { calendarIdFromSlug } from '#lib/calendar-id';
-	import { timeline } from '#lib/timeline.svelte';
-	import { TODAY, dayToIso, isoToDay, toMinutes } from '#lib/time';
+	import { getTimeline } from '#lib/timeline.svelte';
+	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
+
+	const timeline = getTimeline();
 
 	const eventId = $derived(page.params.eventId);
 	/** calendar from the path: the booking's calendar (edit) or the calendar of the row it was created in (new) */
@@ -106,9 +108,7 @@
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
 	// exclusive end day, same rule as the timeline bars: a timed event ending exactly at 00:00 does not occupy that day
-	const eD = $derived(
-		!form.end ? 0 : !form.allDay && form.endTime === '00:00' && form.end > form.start ? isoToDay(form.end) : isoToDay(form.end) + 1
-	);
+	const eD = $derived(!form.end ? 0 : isoToDay(exclusiveEndIso(form.start, form.end, form.allDay ? null : form.endTime)));
 	type Conflict = { key: string; rid: string; label: string; ev: CalEvent };
 	/** time span in wall-clock minutes: exact for timed events, whole days for all-day ones */
 	const spanOf = (e: CalEvent): [number, number] =>
