@@ -7,12 +7,12 @@ import {
 	asUser,
 	assertCanWrite,
 	dayOf,
+	eventsForRows,
 	forVisitor,
 	freshRows,
 	localDay,
 	localTime,
 	TIME_ZONE,
-	listEvents,
 	loadMeta,
 	requireUser,
 	resolveCalendarId,
@@ -34,14 +34,7 @@ export const getEvents = query(
 		to: isoDate
 	}),
 	async ({ rowIds, from, to }) => {
-		const results = await Promise.all(
-			rowIds.map((id) =>
-				listEvents(id, from, to).catch((e) => {
-					console.error('listEvents', id, e?.message);
-					return [];
-				})
-			)
-		);
+		const results = await eventsForRows(rowIds, from, to);
 		return forVisitor(results.flat());
 	}
 );

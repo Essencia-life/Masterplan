@@ -3,6 +3,7 @@ import * as env from '$app/env/private';
 import { error } from '@sveltejs/kit';
 import { getRequestEvent } from '$app/server';
 import { createHash } from 'node:crypto';
+import { cachedRows, invalidateRows } from '#lib/server/cache';
 import { clearSession } from '#lib/server/session';
 import { oauthClient } from '#lib/server/oauth';
 import type { CalEvent, CalendarMeta, Fresh, GroupInfo, RowInfo } from '#lib/types';
@@ -30,6 +31,38 @@ function credentials() {
 	}
 	if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL) throw new Error('GOOGLE_SERVICE_ACCOUNT_EMAIL is required when only the private key is provided');
 	return { email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL, key: fixNewlines(raw) };
+}
+
+/**
+ * Retry on Google quota errors (403/429 usageLimits) and 5xx with truncated exponential backoff.
+ * Kept short (3 tries) because it runs inside serverless request time.
+ */
+export async function withBackoff<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await fn();
+		} catch (e) {
+			const { code, errors } = e as { code?: number; errors?: { reason?: string }[] };
+			const quota = code === 429 || (code === 403 && errors?.some((x) => /rateLimit|usageLimit|quota/i.test(x.reason ?? '')));
+			const retryable = quota || (typeof code === 'number' && code >= 500);
+			if (!retryable || attempt >= tries - 1) throw e;
+			await new Promise((r) => setTimeout(r, 2 ** attempt * 500 + Math.random() * 1000));
+		}
+	}
+}
+
+/**
+ * Quota is counted per "quota user". With domain-wide delegation everything would otherwise land on one
+ * user, so attribute calls to the visitor (signed-in user, or a hash of the client address).
+ */
+function quotaUser(): string | undefined {
+	try {
+		const ev = getRequestEvent();
+		const id = ev.locals.user?.email ?? ev.getClientAddress();
+		return createHash('sha256').update(id).digest('hex').slice(0, 24);
+	} catch {
+		return undefined; // outside a request
+	}
 }
 
 let client: calendar_v3.Calendar | undefined;
@@ -83,7 +116,7 @@ export async function loadMeta(force = false) {
 	const entries: calendar_v3.Schema$CalendarListEntry[] = [];
 	let pageToken: string | undefined;
 	do {
-		const res = await cal.calendarList.list({ maxResults: 250, pageToken, showHidden: true });
+		const res = await withBackoff(() => cal.calendarList.list({ maxResults: 250, pageToken, showHidden: true }));
 		entries.push(...(res.data.items ?? []));
 		pageToken = res.data.nextPageToken ?? undefined;
 	} while (pageToken);
@@ -181,15 +214,18 @@ export async function listEvents(rowId: string, timeMin: string, timeMax: string
 	const out: CalEvent[] = [];
 	let pageToken: string | undefined;
 	do {
-		const res = await serviceCalendar().events.list({
-			calendarId,
-			timeMin: new Date(timeMin + 'T00:00:00Z').toISOString(),
-			timeMax: new Date(timeMax + 'T00:00:00Z').toISOString(),
-			singleEvents: true,
-			orderBy: 'startTime',
-			maxResults: 2500,
-			pageToken
-		});
+		const res = await withBackoff(() =>
+			serviceCalendar().events.list({
+				calendarId,
+				timeMin: new Date(timeMin + 'T00:00:00Z').toISOString(),
+				timeMax: new Date(timeMax + 'T00:00:00Z').toISOString(),
+				singleEvents: true,
+				orderBy: 'startTime',
+				maxResults: 2500,
+				pageToken,
+				quotaUser: quotaUser()
+			})
+		);
 		for (const e of res.data.items ?? []) {
 			const n = normalize(e, rowId);
 			if (n) out.push(n);
@@ -237,7 +273,17 @@ export async function freshRows(rowIds: string[], fromIso: string, toIso: string
 	const from = addDays(fromIso, -1);
 	const to = addDays(toIso, 1);
 	const lists = await Promise.all(ids.map((id) => listEvents(id, from, to).catch(() => [] as CalEvent[])));
+	// cached windows of these rows are outdated now (also after the delayed re-read of room copies)
+	await invalidateRows(ids);
 	return { from, to, rows: Object.fromEntries(ids.map((id, i) => [id, lists[i]])) };
+}
+
+/** Events for the timeline: served from the shared cache, Google only for rows that are not cached. */
+export function eventsForRows(rowIds: string[], from: string, to: string) {
+	return cachedRows(rowIds, from, to, (id) => listEvents(id, from, to).catch((e) => {
+		console.error('listEvents', id, e?.message);
+		return [] as CalEvent[];
+	}));
 }
 
 export { addDays };
@@ -268,7 +314,7 @@ export function userCalendar() {
 /** A revoked or expired refresh token ends the session instead of failing with a cryptic error. */
 export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): Promise<T> {
 	try {
-		return await fn(userCalendar());
+		return await withBackoff(() => fn(userCalendar()));
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : '';
 		if (/invalid_grant|invalid_token|Invalid Credentials/i.test(msg)) {

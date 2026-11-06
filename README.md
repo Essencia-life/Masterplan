@@ -64,6 +64,7 @@ Copy `.env.example` to `.env` (variables are declared in `src/env.ts`):
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | OAuth client |
 | `ALLOWED_DOMAIN` | Workspace domain allowed to sign in, e.g. `essencia.life` |
 | `SESSION_SECRET` | random string, at least 32 characters (`openssl rand -base64 48`) |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | optional shared cache (or `KV_REST_API_URL` / `KV_REST_API_TOKEN` from the Vercel marketplace); without them an in-process cache is used |
 
 ### 4. Run
 
@@ -102,6 +103,13 @@ npm run build
 | `src/hooks.server.ts` | puts the signed-in user on `event.locals` |
 
 Data flow: the layout asks `getEvents` for the rows of expanded groups for the visible window (in 90-day chunks). Mutations return the fresh state of every touched row in the same response (single flight) and the client merges it into its cache. Room copies of a new booking are shown as tentative placeholders and confirmed by a delayed re-read, because Google creates them asynchronously.
+
+## Caching and quota
+
+- Google Calendar quota: 600 requests per minute per user and 10,000 per project. All reads go through the service account, so they are cached for 60 seconds per row and window (`src/lib/server/cache.ts`): Upstash Redis when configured, otherwise in-process memory. One cache round trip serves all rows of a request.
+- Every mutation (and the delayed re-read of room copies) drops the cached rows it touched.
+- Google calls are attributed to the visitor with `quotaUser` (hashed email or client address) and retried with exponential backoff on 429/403 usage limit errors.
+- A failing cache never breaks the app, it only costs a Google request.
 
 ## Browser storage
 

@@ -18,5 +18,11 @@ export const variables = defineEnvVars({
 	/** Workspace domain whose users may sign in, e.g. essencia.life */
 	ALLOWED_DOMAIN: optional,
 	/** Random string (>= 32 chars) used to encrypt the session cookie */
-	SESSION_SECRET: optional
+	SESSION_SECRET: optional,
+
+	// --- cache: Upstash Redis (set by the Vercel marketplace integration as KV_REST_API_*); optional, falls back to memory ---
+	UPSTASH_REDIS_REST_URL: optional,
+	UPSTASH_REDIS_REST_TOKEN: optional,
+	KV_REST_API_URL: optional,
+	KV_REST_API_TOKEN: optional
 });
