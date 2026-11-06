@@ -20,6 +20,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 			code_challenge: codeChallenge,
 			code_challenge_method: 'S256' as never,
 			hd: env.ALLOWED_DOMAIN || undefined
-		})
+		}),
+		{ external: true } // SvelteKit 3 only redirects to other origins when explicitly allowed
 	);
 };
