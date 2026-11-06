@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount, untrack, type Snippet } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import type { LayoutProps } from './$types';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
 	import { calendarIdFromSlug, calendarSlug, isResourceCalendar } from '#lib/calendar-id';
 	import { timeline } from '#lib/timeline.svelte';
 	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
 
-	let { children }: { children: Snippet } = $props();
+	let { children, data }: LayoutProps = $props();
+	const signInUrl = $derived(`/auth/login?returnTo=${encodeURIComponent(page.url.pathname + page.url.search)}`);
 
 	let innerWidth = $state(1024);
 	const mobile = $derived(innerWidth < 640);
@@ -146,7 +148,7 @@
 	}
 
 	function onDown(e: PointerEvent) {
-		if (e.button !== 0) return;
+		if (!data.user || e.button !== 0) return; // anonymous visitors cannot create bookings
 		const t = e.target as HTMLElement;
 		if (t.closest('[data-ev]') || t.closest('[data-label]')) return;
 		const row = t.closest<HTMLElement>('[data-row]');
@@ -262,7 +264,7 @@
 
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
 	function openEvent(ev: CalEvent) {
-		if (ev.id.startsWith('optimistic:')) return;
+		if (!data.user || ev.id.startsWith('optimistic:')) return; // details are for signed-in users
 		goto(`/event/${calendarSlug(ev.rowId)}/${ev.id}`, { reset: false });
 	}
 </script>
@@ -273,17 +275,24 @@
 	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
 		<h1 class="mr-auto text-2xl leading-none">essência <span class="hidden text-base font-normal text-muted sm:inline">· Master</span></h1>
 		{#if timeline.loading > 0}<span class="text-xs text-muted">loading…</span>{/if}
+		<form id="logout-form" method="POST" action="/auth/logout" class="hidden"></form>
+		{#if data.user}
+			<span class="hidden max-w-40 truncate text-sm text-muted md:inline" title={data.user.email}>{data.user.name}</span>
+			<span class="hidden sm:inline-flex"><button type="submit" form="logout-form" class="btn">Sign out</button></span>
+		{:else}
+			<span class="hidden sm:inline-flex"><a class="btn btn-primary" href={signInUrl} data-sveltekit-reload>Sign in</a></span>
+		{/if}
 		<div class="hidden items-center gap-1 sm:flex">
 			<button class="btn" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></button>
 			<button class="btn" onclick={() => scrollToDay(TODAY)}>Today</button>
 			<button class="btn" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></button>
-			<button class="btn btn-primary" onclick={() => goto('/event', { reset: false })}>New booking</button>
+			{#if data.user}<button class="btn btn-primary" onclick={() => goto('/event', { reset: false })}>New booking</button>{/if}
 		</div>
 		<div class="relative sm:hidden">
 			<button class="btn" aria-label="More" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}><Ellipsis size={18} /></button>
 			{#if menuOpen}
 				<div class="absolute right-0 z-30 mt-1 w-40 rounded-lg border border-line bg-surface p-1 shadow-panel">
-					{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ['New booking', () => goto('/event', { reset: false })]] as [label, fn] (label)}
+					{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ...(data.user ? [['New booking', () => goto('/event', { reset: false })], ['Sign out', () => (document.getElementById('logout-form') as HTMLFormElement).requestSubmit()]] : [['Sign in', () => (location.href = signInUrl)]])] as [label, fn] (label)}
 						<button class="block w-full rounded px-3 py-2 text-left hover:bg-surface-2" onclick={() => { (fn as () => void)(); menuOpen = false; }}>{label}</button>
 					{/each}
 				</div>

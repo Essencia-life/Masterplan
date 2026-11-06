@@ -4,22 +4,27 @@ import * as z from 'zod';
 import type { EventDetail } from '#lib/types';
 import {
 	addDays,
-	calendar,
+	asUser,
+	assertCanWrite,
 	dayOf,
+	forVisitor,
 	freshRows,
 	localDay,
 	localTime,
 	TIME_ZONE,
 	listEvents,
 	loadMeta,
+	requireUser,
 	resolveCalendarId,
-	resolveOrganizer
+	resolveOrganizer,
+	rowsForVisitor,
+	serviceCalendar
 } from '#lib/server/google';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Rows, groups and colours (resource calendars discovered dynamically). */
-export const getCalendars = query(async () => (await loadMeta()).meta);
+export const getCalendars = query(async () => rowsForVisitor());
 
 /** Only the rows the client asks for (= expanded groups) are fetched. */
 export const getEvents = query(
@@ -37,13 +42,14 @@ export const getEvents = query(
 				})
 			)
 		);
-		return results.flat();
+		return forVisitor(results.flat());
 	}
 );
 
 export const getEvent = query(
 	z.object({ eventId: z.string(), calendar: z.string().optional() }),
 	async ({ eventId, calendar: hint }): Promise<EventDetail> => {
+		requireUser();
 		const { meta } = await loadMeta();
 		const order = [hint, ...meta.rows.filter((r) => r.kind === 'calendar' && r.available).map((r) => r.id)].filter(
 			(x): x is string => !!x
@@ -51,13 +57,13 @@ export const getEvent = query(
 		for (const rowId of [...new Set(order)]) {
 			try {
 				const calendarId = await resolveCalendarId(rowId);
-				let ev = (await calendar().events.get({ calendarId, eventId })).data;
+				let ev = (await serviceCalendar().events.get({ calendarId, eventId })).data;
 				let ownerRow = rowId;
 				// a resource copy: jump to the organizer's event so edits go to the right place
 				if (ev.organizer && !ev.organizer.self && ev.iCalUID) {
 					for (const r of meta.rows.filter((x) => x.kind === 'calendar' && x.available)) {
 						const id = await resolveCalendarId(r.id);
-						const found = await calendar().events.list({ calendarId: id, iCalUID: ev.iCalUID });
+						const found = await serviceCalendar().events.list({ calendarId: id, iCalUID: ev.iCalUID });
 						if (found.data.items?.[0]) {
 							ev = found.data.items[0];
 							ownerRow = r.id;
@@ -108,10 +114,11 @@ export const saveEvent = command(saveSchema, async (input) => {
 	if (input.allDay ? input.end <= input.start : input.end < input.start) error(400, 'End must be after start');
 	if (!input.allDay && (!input.startTime || !input.endTime)) error(400, 'Times are required');
 	if (!input.allDay && input.end === input.start && input.endTime! <= input.startTime!) error(400, 'End time must be after start time');
-	const { resourceIds, writableIds } = await loadMeta();
-	if (!writableIds.has(input.calendar)) error(400, 'This calendar is read-only');
+	requireUser();
+	const { resourceIds } = await loadMeta();
 	for (const r of input.resourceIds) if (!resourceIds.has(r)) error(400, 'Unknown resource');
 	const calendarId = await resolveCalendarId(input.calendar);
+	await assertCanWrite(calendarId);
 	const requestBody = {
 		summary: input.title,
 		description: input.description,
@@ -120,12 +127,14 @@ export const saveEvent = command(saveSchema, async (input) => {
 		end: input.allDay ? { date: input.end } : { dateTime: `${input.end}T${input.endTime}:00`, timeZone: TIME_ZONE },
 		attendees: input.resourceIds.map((email) => ({ email, resource: true }))
 	};
-	const api = calendar().events;
 	// rows/dates of the previous state also change (rooms released, event moved)
-	const before = input.id ? (await api.get({ calendarId, eventId: input.id })).data : null;
-	const res = input.id
-		? await api.patch({ calendarId, eventId: input.id, requestBody, sendUpdates: 'none' })
-		: await api.insert({ calendarId, requestBody, sendUpdates: 'none' });
+	const before = input.id ? (await serviceCalendar().events.get({ calendarId, eventId: input.id })).data : null;
+	// written as the signed-in user, so Google's calendar sharing decides what is allowed
+	const res = await asUser((api) =>
+		input.id
+			? api.events.patch({ calendarId, eventId: input.id, requestBody, sendUpdates: 'none' })
+			: api.events.insert({ calendarId, requestBody, sendUpdates: 'none' })
+	);
 	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
 	const oldStart = (dayOf(before?.start) || input.start);
 	const oldEnd = (dayOf(before?.end) || input.end);
@@ -140,17 +149,20 @@ export const saveEvent = command(saveSchema, async (input) => {
 /** Re-read rows after a mutation (resource copies of an event show up with a delay). */
 export const refreshRows = command(
 	z.object({ rowIds: z.array(z.string()).min(1).max(40), from: isoDate, to: isoDate }),
-	async ({ rowIds, from, to }) => freshRows(rowIds, from, to)
+	async ({ rowIds, from, to }) => {
+		requireUser();
+		return freshRows(rowIds, from, to);
+	}
 );
 
 export const deleteEvent = command(
 	z.object({ calendar: z.string(), id: z.string() }),
 	async ({ calendar: key, id }) => {
-		if (!(await loadMeta()).writableIds.has(key)) error(400, 'This calendar is read-only');
+		requireUser();
 		const calendarId = await resolveCalendarId(key);
-		const api = calendar().events;
-		const before = (await api.get({ calendarId, eventId: id })).data;
-		await api.delete({ calendarId, eventId: id, sendUpdates: 'none' });
+		await assertCanWrite(calendarId);
+		const before = (await serviceCalendar().events.get({ calendarId, eventId: id })).data;
+		await asUser((api) => api.events.delete({ calendarId, eventId: id, sendUpdates: 'none' }));
 		const rooms = (before.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
 		const s = dayOf(before.start);
 		const e = (dayOf(before.end) || s);
@@ -170,15 +182,16 @@ export const resolveConflict = command(
 		toResourceId: z.string().optional()
 	}),
 	async ({ rowId, eventId, action, toResourceId }) => {
+		requireUser();
 		const { resourceIds } = await loadMeta();
 		if (!resourceIds.has(rowId)) error(400, 'Not a resource calendar');
 		if (action === 'move' && (!toResourceId || !resourceIds.has(toResourceId))) error(400, 'Pick a target room');
 		const target = await resolveOrganizer(rowId, eventId);
-		const api = calendar().events;
-		const ev = (await api.get(target)).data;
+		await assertCanWrite(target.calendarId);
+		const ev = (await serviceCalendar().events.get(target)).data;
 		const rest = (ev.attendees ?? []).filter((a) => a.email !== rowId);
 		const attendees = action === 'release' ? rest : [...rest.filter((a) => a.email !== toResourceId), { email: toResourceId!, resource: true }];
-		await api.patch({ calendarId: target.calendarId, eventId: target.eventId, requestBody: { attendees }, sendUpdates: 'none' });
+		await asUser((api) => api.events.patch({ calendarId: target.calendarId, eventId: target.eventId, requestBody: { attendees }, sendUpdates: 'none' }));
 		const s = dayOf(ev.start);
 		const e = (dayOf(ev.end) || s);
 		return { fresh: await freshRows([target.rowKey, rowId, ...(toResourceId ? [toResourceId] : [])], s, e) };

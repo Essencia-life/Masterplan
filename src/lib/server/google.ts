@@ -1,5 +1,10 @@
 import { google, type calendar_v3 } from 'googleapis';
 import * as env from '$app/env/private';
+import { error } from '@sveltejs/kit';
+import { getRequestEvent } from '$app/server';
+import { createHash } from 'node:crypto';
+import { clearSession } from '#lib/server/session';
+import { oauthClient } from '#lib/server/oauth';
 import type { CalEvent, CalendarMeta, Fresh, GroupInfo, RowInfo } from '#lib/types';
 
 const RESOURCE_SUFFIX = '@resource.calendar.google.com';
@@ -28,7 +33,8 @@ function credentials() {
 }
 
 let client: calendar_v3.Calendar | undefined;
-export function calendar() {
+/** Service account client: reads for everybody (calendar list, events). */
+export function serviceCalendar() {
 	if (client) return client;
 	const { email, key } = credentials();
 	const auth = new google.auth.JWT({
@@ -64,7 +70,7 @@ const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true }
 const IGNORED_NAMES = /^(private|phases of the moon)$/i;
 const isNoise = (id: string) => /#(holiday|contacts)@|holiday@group\.v\.calendar\.google\.com/.test(id);
 
-let metaCache: { at: number; meta: CalendarMeta; ids: Set<string>; resourceIds: Set<string>; writableIds: Set<string> } | undefined;
+let metaCache: { at: number; meta: CalendarMeta; ids: Set<string>; resourceIds: Set<string> } | undefined;
 
 /**
  * The whole row model comes from the calendar list of the (impersonated) user:
@@ -73,7 +79,7 @@ let metaCache: { at: number; meta: CalendarMeta; ids: Set<string>; resourceIds: 
  */
 export async function loadMeta(force = false) {
 	if (!force && metaCache && Date.now() - metaCache.at < 60_000) return metaCache;
-	const cal = calendar();
+	const cal = serviceCalendar();
 	const entries: calendar_v3.Schema$CalendarListEntry[] = [];
 	let pageToken: string | undefined;
 	do {
@@ -84,7 +90,6 @@ export async function loadMeta(force = false) {
 
 	const nameOf = (e: calendar_v3.Schema$CalendarListEntry) => e.summaryOverride ?? e.summary ?? e.id!;
 	const rows: RowInfo[] = [];
-	const writableIds = new Set<string>();
 	const resourceIds = new Set<string>();
 
 	const groupLabels = new Map<string, string>();
@@ -100,9 +105,8 @@ export async function loadMeta(force = false) {
 		.filter((x): x is { e: calendar_v3.Schema$CalendarListEntry; p: { group: string; name: string } } => !!x.p)
 		.sort((a, b) => cmp(a.p.group, b.p.group) || cmp(a.p.name, b.p.name));
 	for (const { e, p } of calendars) {
-		const writable = e.accessRole === 'owner' || e.accessRole === 'writer';
-		if (writable) writableIds.add(e.id!);
-		rows.push({ id: e.id!, label: p.name, kind: 'calendar', groupId: groupOf(p.group), color: e.backgroundColor ?? '#8b8372', available: true, writable });
+		// writability depends on the signed-in user, see rowsForUser()
+		rows.push({ id: e.id!, label: p.name, kind: 'calendar', groupId: groupOf(p.group), color: e.backgroundColor ?? '#8b8372', available: true, writable: false });
 	}
 
 	const resources = entries
@@ -122,7 +126,7 @@ export async function loadMeta(force = false) {
 		.map(([id, label]) => ({ id, label }))
 		.sort((a, b) => Number(!calendarGroups.has(a.id)) - Number(!calendarGroups.has(b.id)));
 	const meta: CalendarMeta = { groups, rows };
-	metaCache = { at: Date.now(), meta, ids: new Set(rows.map((r) => r.id)), resourceIds, writableIds };
+	metaCache = { at: Date.now(), meta, ids: new Set(rows.map((r) => r.id)), resourceIds };
 	return metaCache;
 }
 
@@ -177,7 +181,7 @@ export async function listEvents(rowId: string, timeMin: string, timeMax: string
 	const out: CalEvent[] = [];
 	let pageToken: string | undefined;
 	do {
-		const res = await calendar().events.list({
+		const res = await serviceCalendar().events.list({
 			calendarId,
 			timeMin: new Date(timeMin + 'T00:00:00Z').toISOString(),
 			timeMax: new Date(timeMax + 'T00:00:00Z').toISOString(),
@@ -202,7 +206,7 @@ export async function listEvents(rowId: string, timeMin: string, timeMax: string
  */
 export async function resolveOrganizer(rowId: string, eventId: string) {
 	if (!isResourceId(rowId)) return { calendarId: await resolveCalendarId(rowId), eventId, rowKey: rowId };
-	const api = calendar();
+	const api = serviceCalendar();
 	const copy = (await api.events.get({ calendarId: await resolveCalendarId(rowId), eventId })).data;
 	const day = dayOf(copy.start);
 	if (!copy.iCalUID || !day) throw new Error('Event cannot be traced to its organizer');
@@ -237,3 +241,97 @@ export async function freshRows(rowIds: string[], fromIso: string, toIso: string
 }
 
 export { addDays };
+
+
+// ---------- signed-in user (OAuth) ----------
+
+export function currentUser() {
+	return getRequestEvent().locals.user;
+}
+
+/** Every write and every detail read goes through this: 401 for anonymous visitors. */
+export function requireUser() {
+	const { locals } = getRequestEvent();
+	if (!locals.user || !locals.refreshToken) error(401, 'Please sign in');
+	return { user: locals.user, refreshToken: locals.refreshToken };
+}
+
+/** Calendar client acting as the signed-in user, so Google's own sharing rules decide what may be written. */
+export function userCalendar() {
+	const { refreshToken } = requireUser();
+	const { url } = getRequestEvent();
+	const client = oauthClient(url.origin);
+	client.setCredentials({ refresh_token: refreshToken });
+	return google.calendar({ version: 'v3', auth: client });
+}
+
+/** A revoked or expired refresh token ends the session instead of failing with a cryptic error. */
+export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): Promise<T> {
+	try {
+		return await fn(userCalendar());
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : '';
+		if (/invalid_grant|invalid_token|Invalid Credentials/i.test(msg)) {
+			clearSession(getRequestEvent().cookies);
+			error(401, 'Your session expired, please sign in again');
+		}
+		const status = (e as { code?: number }).code;
+		if (status === 403 || status === 404) error(403, 'You do not have permission for this calendar');
+		throw e;
+	}
+}
+
+const roleCache = new Map<string, { at: number; roles: Map<string, string> }>();
+
+/** calendar id → access role of the signed-in user (from their own calendar list) */
+export async function userRoles(): Promise<Map<string, string>> {
+	const { user } = requireUser();
+	const hit = roleCache.get(user.email);
+	if (hit && Date.now() - hit.at < 60_000) return hit.roles;
+	const roles = new Map<string, string>();
+	await asUser(async (api) => {
+		let pageToken: string | undefined;
+		do {
+			const res = await api.calendarList.list({ maxResults: 250, pageToken, showHidden: true });
+			for (const e of res.data.items ?? []) if (e.id && e.accessRole) roles.set(e.id, e.accessRole);
+			pageToken = res.data.nextPageToken ?? undefined;
+		} while (pageToken);
+	});
+	roleCache.set(user.email, { at: Date.now(), roles });
+	return roles;
+}
+
+export async function assertCanWrite(calendarId: string) {
+	const role = (await userRoles()).get(calendarId);
+	if (role !== 'owner' && role !== 'writer') error(403, 'You do not have write access to this calendar');
+}
+
+/** rows as the current visitor may use them: `writable` follows the user's own calendar settings */
+export async function rowsForVisitor(): Promise<CalendarMeta> {
+	const { meta } = await loadMeta();
+	if (!currentUser()) return meta;
+	const roles = await userRoles().catch(() => new Map<string, string>());
+	return {
+		groups: meta.groups,
+		rows: meta.rows.map((r) => ({ ...r, writable: r.kind === 'calendar' && (roles.get(r.id) === 'owner' || roles.get(r.id) === 'writer') }))
+	};
+}
+
+const opaque = (v: string) => createHash('sha256').update(v).digest('hex').slice(0, 12);
+
+/** Anonymous visitors see availability only: no titles, notes, declines; link ids are hashed. */
+export function forVisitor(events: CalEvent[]): CalEvent[] {
+	if (currentUser()) return events;
+	return events.map((e) => ({
+		id: opaque(e.id),
+		rowId: e.rowId,
+		linkId: opaque(e.linkId),
+		title: 'Booked',
+		start: e.start,
+		end: e.end,
+		status: e.status,
+		description: '',
+		fromLocal: e.fromLocal,
+		toLocal: e.toLocal
+	}));
+}
