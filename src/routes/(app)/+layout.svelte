@@ -130,7 +130,8 @@
 		const row = calendarIdFromSlug(page.params.calendarId) ?? sp.get('row'),
 			from = sp.get('from'),
 			to = sp.get('to');
-		return row && from && to ? { rowId: row, a: isoToDay(from), b: isoToDay(to) } : null;
+		// the URL's `to` is exclusive, the selection is inclusive
+		return row && from && to ? { rowId: row, a: isoToDay(from), b: isoToDay(to) - 1 } : null;
 	});
 	const sel = $derived(drag ?? urlSel);
 
