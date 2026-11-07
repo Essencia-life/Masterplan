@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
+	import { fly, slide } from 'svelte/transition';
 	import { Button, Dropdown, DropdownItem } from 'flowbite-svelte';
 	import type { LayoutProps } from './$types';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
@@ -270,6 +271,11 @@
 		});
 	}
 
+	// bottom sheet slides up on mobile, side panel opens as a column on desktop
+	const motion = (node: Element) => {
+		const duration = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
+		return mobile ? fly(node, { y: 320, duration }) : slide(node, { axis: 'x', duration });
+	};
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
 	function openEvent(ev: CalEvent) {
 		if (!data.user || ev.id.startsWith('optimistic:')) return; // details are for signed-in users
@@ -475,9 +481,11 @@
 
 		{#if panelOpen}
 			<aside
+				transition:motion
 				class="fixed inset-x-0 bottom-0 z-40 flex max-h-[58vh] flex-col overflow-hidden rounded-t-2xl border-t border-line bg-surface shadow-sheet md:static md:max-h-none md:w-[380px] md:shrink-0 md:rounded-none md:border-t-0 md:border-l md:shadow-sheet"
 			>
-				{@render children()}
+				<!-- fixed width inside, so the content does not reflow while the column grows -->
+				<div class="flex min-h-0 w-full flex-1 flex-col md:w-[380px] md:shrink-0">{@render children()}</div>
 			</aside>
 		{:else}
 			<div class="hidden">{@render children()}</div>

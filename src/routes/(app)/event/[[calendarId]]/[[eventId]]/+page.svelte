@@ -262,7 +262,7 @@
 </div>
 
 <!-- the tab bodies are rendered below; the items only carry the titles -->
-<Tabs bind:selected={tab} tabStyle="underline" class="px-3">
+<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="hidden">
 	<TabItem key="details" title="Details" />
 	<TabItem key="resources" title="Resources ({form.resourceIds.length})" />
 	{#if conflicts.length}<TabItem key="conflicts" title="Conflicts ({conflicts.length})" />{/if}
