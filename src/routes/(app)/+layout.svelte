@@ -484,7 +484,7 @@
 		{#if panelOpen}
 			<aside
 				transition:motion
-				class="fixed inset-x-0 bottom-0 z-40 flex max-h-[58vh] flex-col overflow-hidden rounded-t-2xl border-t border-line bg-surface shadow-sheet md:static md:max-h-none md:w-[380px] md:shrink-0 md:rounded-none md:border-t-0 md:border-l md:shadow-sheet"
+				class="fixed inset-x-0 bottom-0 z-40 flex h-[58vh] flex-col overflow-hidden rounded-t-2xl border-t border-line bg-surface shadow-sheet md:static md:h-auto md:w-[380px] md:shrink-0 md:rounded-none md:border-t-0 md:border-l md:shadow-sheet"
 			>
 				<!-- fixed width inside, so the content does not reflow while the column grows -->
 				<div class="flex min-h-0 w-full flex-1 flex-col md:w-[380px] md:shrink-0">{@render children()}</div>
