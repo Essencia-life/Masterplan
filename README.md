@@ -64,7 +64,7 @@ Copy `.env.example` to `.env` (variables are declared in `src/env.ts`):
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | OAuth client |
 | `ALLOWED_DOMAIN` | Workspace domain allowed to sign in, e.g. `essencia.life` |
 | `SESSION_SECRET` | random string, at least 32 characters (`openssl rand -base64 48`) |
-| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | optional shared cache (or `KV_REST_API_URL` / `KV_REST_API_TOKEN` from the Vercel marketplace); without them an in-process cache is used |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | optional shared cache (or `KV_REST_API_URL` / `KV_REST_API_TOKEN` from the Vercel marketplace); without them an in-process cache is used |
 
 ### 4. Run
 

@@ -4,8 +4,8 @@ import type { CalEvent } from '#lib/types';
 
 const TTL_SECONDS = 60;
 
-const url = env.UPSTASH_REDIS_REST_URL || env.KV_REST_API_URL;
-const token = env.UPSTASH_REDIS_REST_TOKEN || env.KV_REST_API_TOKEN;
+const url = env.KV_REST_API_URL || env.KV_REST_API_URL;
+const token = env.KV_REST_API_TOKEN || env.KV_REST_API_TOKEN;
 /** Shared cache for all serverless instances; without credentials (local dev) an in-process map is used. */
 const redis = url && token ? new Redis({ url, token }) : null;
 

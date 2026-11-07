@@ -24,8 +24,8 @@ export const variables = defineEnvVars({
 	SESSION_SECRET: required(32),
 
 	// --- cache: Upstash Redis (set by the Vercel marketplace integration as KV_REST_API_*); optional, falls back to memory ---
-	UPSTASH_REDIS_REST_URL: optional,
-	UPSTASH_REDIS_REST_TOKEN: optional,
+	KV_REST_API_URL: optional,
+	KV_REST_API_TOKEN: optional,
 	KV_REST_API_URL: optional,
 	KV_REST_API_TOKEN: optional
 });
