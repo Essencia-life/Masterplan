@@ -261,119 +261,120 @@
 	<CloseButton onclick={close} />
 </div>
 
-<!-- the tab bodies are rendered below; the items only carry the titles -->
-<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="hidden">
-	<TabItem key="details" title="Details" />
-	<TabItem key="resources" title="Resources ({form.resourceIds.length})" />
-	{#if conflicts.length}<TabItem key="conflicts" title="Conflicts ({conflicts.length})" />{/if}
-</Tabs>
-
-<div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-	{#if loadError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{loadError}</p>{/if}
-	{#if conflicts.length}
-		<button type="button" class="block w-full text-left" onclick={() => (tab = 'conflicts')}>
-			<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {conflicts.length} conflicting {conflicts.length === 1 ? 'booking' : 'bookings'} – release or move them</Badge>
-		</button>
-	{/if}
-	{#if retreatGap}<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {retreatGap}</Badge>{/if}
-
-	{#if tab === 'details'}
-		<div>
-			<Label for="f-title" class="mb-1">Title</Label>
-			<Input id="f-title" bind:value={form.title} placeholder="e.g. Yoga retreat" />
-		</div>
-		<div>
-			<Label for="f-cal" class="mb-1">Calendar</Label>
-			<select
-				id="f-cal"
-				class="block w-full rounded-lg border border-line bg-surface p-2.5 text-sm text-ink focus:border-primary-500 focus:ring-primary-500 disabled:opacity-60"
-				bind:value={form.calendar}
-				disabled={!!form.id}
-			>
-				<option value="" disabled>Choose a calendar…</option>
-				{#each calendarOptions as g (g.label)}
-					<optgroup label={g.label}>
-						{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}
-					</optgroup>
-				{/each}
-			</select>
-			{#if !form.calendar}<p class="mt-1 text-xs text-muted">Pick the calendar this booking belongs to.</p>{/if}
-		</div>
-		<div class="grid grid-cols-2 gap-3">
-			<div>
-				<Label for="f-from" class="mb-1">From</Label>
-				<Input id="f-from" type="date" bind:value={form.start} />
-			</div>
-			<div>
-				<Label for="f-to" class="mb-1">To (inclusive)</Label>
-				<Input id="f-to" type="date" min={form.start} bind:value={form.end} />
-			</div>
-		</div>
-		<Checkbox bind:checked={form.allDay}>All day</Checkbox>
-		{#if !form.allDay}
-			<div class="grid grid-cols-2 gap-3">
-				<div>
-					<Label for="f-t1" class="mb-1">Start time</Label>
-					<Input id="f-t1" type="time" bind:value={form.startTime} />
-				</div>
-				<div>
-					<Label for="f-t2" class="mb-1">End time</Label>
-					<Input id="f-t2" type="time" bind:value={form.endTime} />
-				</div>
-			</div>
+<div class="flex min-h-0 flex-1 flex-col">
+	<div class="space-y-2 px-4 pt-3 empty:hidden">
+		{#if loadError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{loadError}</p>{/if}
+		{#if conflicts.length}
+			<button type="button" class="block w-full text-left" onclick={() => (tab = 'conflicts')}>
+				<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {conflicts.length} conflicting {conflicts.length === 1 ? 'booking' : 'bookings'} – release or move them</Badge>
+			</button>
 		{/if}
-		<div>
-			<Label for="f-status" class="mb-1">Status</Label>
-			<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />
-		</div>
-		<div>
-			<Label for="f-desc" class="mb-1">Notes</Label>
-			<Textarea id="f-desc" rows={4} bind:value={form.description} />
-		</div>
-	{:else if tab === 'conflicts'}
-		<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
-		{#each conflicts as c (c.key)}
-			{@const alts = alternatives(c)}
-			<div class="space-y-2 rounded-lg border border-line p-3">
-				<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
-				<div class="flex flex-wrap items-center gap-2">
-					<Button size="xs" color="alternative" disabled={resolving === c.key} onclick={() => resolve(c, 'release')}>Release room</Button>
+		{#if retreatGap}<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {retreatGap}</Badge>{/if}
+	</div>
+	<!-- the tab bodies scroll, the bar and footer stay -->
+	<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="mt-0 min-h-0 flex-1 space-y-3 overflow-y-auto rounded-none bg-transparent p-4 dark:bg-transparent">
+		<TabItem key="details" title="Details">
+				<div>
+					<Label for="f-title" class="mb-1">Title</Label>
+					<Input id="f-title" bind:value={form.title} placeholder="e.g. Yoga retreat" />
+				</div>
+				<div>
+					<Label for="f-cal" class="mb-1">Calendar</Label>
 					<select
-						class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60"
-						bind:value={moveTo[c.key]}
-						disabled={!alts.length}
-						aria-label="Move the room reservation to"
+						id="f-cal"
+						class="block w-full rounded-lg border border-line bg-surface p-2.5 text-sm text-ink focus:border-primary-500 focus:ring-primary-500 disabled:opacity-60"
+						bind:value={form.calendar}
+						disabled={!!form.id}
 					>
-						<option value={undefined} disabled>Move to…</option>
-						{#each alts as g (g.label)}
+						<option value="" disabled>Choose a calendar…</option>
+						{#each calendarOptions as g (g.label)}
 							<optgroup label={g.label}>
 								{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}
 							</optgroup>
 						{/each}
 					</select>
-					<Button size="xs" disabled={!moveTo[c.key] || resolving === c.key} onclick={() => resolve(c, 'move')}>Move</Button>
+					{#if !form.calendar}<p class="mt-1 text-xs text-muted">Pick the calendar this booking belongs to.</p>{/if}
 				</div>
-				{#if !alts.length}<p class="text-xs text-muted">No free room for these dates: all {(timeline.meta?.rows ?? []).filter((r) => r.kind === 'resource').length} room calendars are either part of this booking or already booked.</p>{/if}
-			</div>
-		{/each}
-	{:else}
-		{#each resourceGroups as g (g.id)}
-			<fieldset>
-				<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
-					{g.label}
-					<Toggle size="small" class="text-xs font-normal" checked={g.rows.every((r) => form.resourceIds.includes(r.id))} onchange={() => toggleGroup(g.rows.map((r) => r.id))}>All</Toggle>
-				</legend>
-				<div class="grid grid-cols-2 gap-x-3 gap-y-1">
-					{#each g.rows as r (r.id)}
-						<Checkbox checked={form.resourceIds.includes(r.id)} onchange={(e) => toggle(r.id, (e.currentTarget as HTMLInputElement).checked)}>{r.label}</Checkbox>
+				<div class="grid grid-cols-2 gap-3">
+					<div>
+						<Label for="f-from" class="mb-1">From</Label>
+						<Input id="f-from" type="date" bind:value={form.start} />
+					</div>
+					<div>
+						<Label for="f-to" class="mb-1">To (inclusive)</Label>
+						<Input id="f-to" type="date" min={form.start} bind:value={form.end} />
+					</div>
+				</div>
+				<Checkbox bind:checked={form.allDay}>All day</Checkbox>
+				{#if !form.allDay}
+					<div class="grid grid-cols-2 gap-3">
+						<div>
+							<Label for="f-t1" class="mb-1">Start time</Label>
+							<Input id="f-t1" type="time" bind:value={form.startTime} />
+						</div>
+						<div>
+							<Label for="f-t2" class="mb-1">End time</Label>
+							<Input id="f-t2" type="time" bind:value={form.endTime} />
+						</div>
+					</div>
+				{/if}
+				<div>
+					<Label for="f-status" class="mb-1">Status</Label>
+					<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />
+				</div>
+				<div>
+					<Label for="f-desc" class="mb-1">Notes</Label>
+					<Textarea id="f-desc" rows={4} bind:value={form.description} />
+				</div>
+		</TabItem>
+		<TabItem key="resources" title="Resources ({form.resourceIds.length})">
+				{#each resourceGroups as g (g.id)}
+					<fieldset>
+						<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
+							{g.label}
+							<Toggle size="small" class="text-xs font-normal" checked={g.rows.every((r) => form.resourceIds.includes(r.id))} onchange={() => toggleGroup(g.rows.map((r) => r.id))}>All</Toggle>
+						</legend>
+						<div class="grid grid-cols-2 gap-x-3 gap-y-1">
+							{#each g.rows as r (r.id)}
+								<Checkbox checked={form.resourceIds.includes(r.id)} onchange={(e) => toggle(r.id, (e.currentTarget as HTMLInputElement).checked)}>{r.label}</Checkbox>
+							{/each}
+						</div>
+					</fieldset>
+				{:else}
+					<p class="text-sm text-muted">No resource calendars found. Subscribe the service account's user to them first.</p>
+				{/each}
+		</TabItem>
+		{#if conflicts.length}
+			<TabItem key="conflicts" title="Conflicts ({conflicts.length})">
+					<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
+					{#each conflicts as c (c.key)}
+						{@const alts = alternatives(c)}
+						<div class="space-y-2 rounded-lg border border-line p-3">
+							<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
+							<div class="flex flex-wrap items-center gap-2">
+								<Button size="xs" color="alternative" disabled={resolving === c.key} onclick={() => resolve(c, 'release')}>Release room</Button>
+								<select
+									class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60"
+									bind:value={moveTo[c.key]}
+									disabled={!alts.length}
+									aria-label="Move the room reservation to"
+								>
+									<option value={undefined} disabled>Move to…</option>
+									{#each alts as g (g.label)}
+										<optgroup label={g.label}>
+											{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}
+										</optgroup>
+									{/each}
+								</select>
+								<Button size="xs" disabled={!moveTo[c.key] || resolving === c.key} onclick={() => resolve(c, 'move')}>Move</Button>
+							</div>
+							{#if !alts.length}<p class="text-xs text-muted">No free room for these dates: all {(timeline.meta?.rows ?? []).filter((r) => r.kind === 'resource').length} room calendars are either part of this booking or already booked.</p>{/if}
+						</div>
 					{/each}
-				</div>
-			</fieldset>
-		{:else}
-			<p class="text-sm text-muted">No resource calendars found. Subscribe the service account's user to them first.</p>
-		{/each}
-	{/if}
-	{#if saveError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{saveError}</p>{/if}
+			</TabItem>
+		{/if}
+	</Tabs>
+	{#if saveError}<p class="px-4 pb-2 text-sm text-secondary-700 dark:text-secondary-300">{saveError}</p>{/if}
 </div>
 
 <div class="flex items-center gap-2 border-t border-line p-3">
