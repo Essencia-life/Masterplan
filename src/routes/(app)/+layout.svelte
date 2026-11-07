@@ -12,7 +12,11 @@
 	let { children, data }: LayoutProps = $props();
 	const timeline = new Timeline(data.meta, data.metaError);
 	setTimeline(timeline);
-	$effect.pre(() => timeline.setMeta(data.meta, data.metaError));
+	// untrack: setMeta reads timeline.meta, which would make this effect depend on what it writes
+	$effect.pre(() => {
+		const { meta, metaError } = data;
+		untrack(() => timeline.setMeta(meta, metaError));
+	});
 	const signInUrl = $derived(`/auth/login?returnTo=${encodeURIComponent(page.url.pathname + page.url.search)}`);
 
 	let innerWidth = $state(1024);
