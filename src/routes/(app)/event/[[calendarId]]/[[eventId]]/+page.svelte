@@ -332,7 +332,7 @@
 					</div>
 					<div>
 						<Label for="f-desc" class="mb-1">Notes</Label>
-						<Textarea id="f-desc" rows={4} bind:value={form.description} />
+						<Textarea id="f-desc" class="w-full" rows={4} bind:value={form.description} />
 					</div>
 			</TabItem>
 			<TabItem key="resources" title="Resources ({form.resourceIds.length})">
