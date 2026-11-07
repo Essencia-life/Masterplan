@@ -1,0 +1,328 @@
+import { google, type calendar_v3 } from 'googleapis';
+import * as env from '$app/env/private';
+import { error } from '@sveltejs/kit';
+import { getRequestEvent } from '$app/server';
+import { createHash } from 'node:crypto';
+import { cachedRows, invalidateRows } from '#lib/server/cache';
+import { clearSession } from '#lib/server/session';
+import { oauthClient } from '#lib/server/oauth';
+import { addDays, dayOf, eventRange, localDay, localTime, normalize, parseCalendarName, parseResourceName } from '#lib/server/parse';
+import { isResourceId } from '#lib/calendar-id';
+import type { CalEvent, CalendarMeta, Fresh, GroupInfo, RowInfo } from '#lib/types';
+
+export { isResourceId, addDays, dayOf, eventRange, localDay, localTime, normalize, parseResourceName };
+
+/**
+ * GOOGLE_SERVICE_ACCOUNT_JSON may be: the JSON itself, the JSON as base64,
+ * or just the PEM private key ("-----BEGIN PRIVATE KEY-----", multi-line or with literal \\n)
+ * together with GOOGLE_SERVICE_ACCOUNT_EMAIL.
+ */
+function credentials() {
+	let raw = env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+	if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not set');
+	if (raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1);
+	if (!raw.startsWith('{') && !raw.includes('BEGIN')) {
+		const decoded = Buffer.from(raw, 'base64').toString('utf8').trim();
+		if (decoded.startsWith('{') || decoded.includes('BEGIN')) raw = decoded;
+	}
+	const fixNewlines = (k: string) => k.replace(/\\n/g, '\n');
+	if (raw.startsWith('{')) {
+		const json = JSON.parse(raw);
+		return { email: json.client_email as string, key: fixNewlines(json.private_key as string) };
+	}
+	if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL) throw new Error('GOOGLE_SERVICE_ACCOUNT_EMAIL is required when only the private key is provided');
+	return { email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL, key: fixNewlines(raw) };
+}
+
+/**
+ * Retry on Google quota errors (403/429 usageLimits) and 5xx with truncated exponential backoff.
+ * Kept short (3 tries) because it runs inside serverless request time.
+ */
+export async function withBackoff<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await fn();
+		} catch (e) {
+			const { code, errors } = e as { code?: number; errors?: { reason?: string }[] };
+			const quota = code === 429 || (code === 403 && errors?.some((x) => /rateLimit|usageLimit|quota/i.test(x.reason ?? '')));
+			const retryable = quota || (typeof code === 'number' && code >= 500);
+			if (!retryable || attempt >= tries - 1) throw e;
+			await new Promise((r) => setTimeout(r, 2 ** attempt * 500 + Math.random() * 1000));
+		}
+	}
+}
+
+/**
+ * Quota is counted per "quota user". With domain-wide delegation everything would otherwise land on one
+ * user, so attribute calls to the visitor (signed-in user, or a hash of the client address).
+ */
+function quotaUser(): string | undefined {
+	try {
+		const ev = getRequestEvent();
+		const id = ev.locals.user?.email ?? ev.getClientAddress();
+		return createHash('sha256').update(id).digest('hex').slice(0, 24);
+	} catch {
+		return undefined; // outside a request
+	}
+}
+
+let client: calendar_v3.Calendar | undefined;
+/** Service account client: reads for everybody (calendar list, events). */
+export function serviceCalendar() {
+	if (client) return client;
+	const { email, key } = credentials();
+	const auth = new google.auth.JWT({
+		email,
+		key,
+		scopes: ['https://www.googleapis.com/auth/calendar'],
+		subject: env.GOOGLE_IMPERSONATE_USER || undefined
+	});
+	client = google.calendar({ version: 'v3', auth });
+	return client;
+}
+
+
+const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
+const IGNORED_NAMES = /^(private|phases of the moon)$/i;
+const isNoise = (id: string) => /#(holiday|contacts)@|holiday@group\.v\.calendar\.google\.com/.test(id);
+
+let metaCache: { at: number; meta: CalendarMeta; ids: Set<string>; resourceIds: Set<string> } | undefined;
+
+/**
+ * The whole row model comes from the calendar list of the (impersonated) user:
+ * - normal calendars → rows (grouped by name), colours from backgroundColor
+ * - resource calendars (…@resource.calendar.google.com) → rows grouped by the "{group}-{floor}-{name} (capacity)" naming scheme
+ */
+export async function loadMeta(force = false) {
+	if (!force && metaCache && Date.now() - metaCache.at < 60_000) return metaCache;
+	const cal = serviceCalendar();
+	const entries: calendar_v3.Schema$CalendarListEntry[] = [];
+	let pageToken: string | undefined;
+	do {
+		const res = await withBackoff(() => cal.calendarList.list({ maxResults: 250, pageToken, showHidden: true }));
+		entries.push(...(res.data.items ?? []));
+		pageToken = res.data.nextPageToken ?? undefined;
+	} while (pageToken);
+
+	const nameOf = (e: calendar_v3.Schema$CalendarListEntry) => e.summaryOverride ?? e.summary ?? e.id!;
+	const rows: RowInfo[] = [];
+	const resourceIds = new Set<string>();
+
+	const groupLabels = new Map<string, string>();
+	const groupOf = (label: string) => {
+		const id = 'g-' + slug(label);
+		if (!groupLabels.has(id)) groupLabels.set(id, label);
+		return id;
+	};
+
+	const calendars = entries
+		.filter((e) => e.id && !isResourceId(e.id) && !isNoise(e.id) && e.accessRole !== 'freeBusyReader')
+		.map((e) => ({ e, p: parseCalendarName(nameOf(e)) }))
+		.filter((x): x is { e: calendar_v3.Schema$CalendarListEntry; p: { group: string; name: string } } => !!x.p)
+		.sort((a, b) => cmp(a.p.group, b.p.group) || cmp(a.p.name, b.p.name));
+	for (const { e, p } of calendars) {
+		// writability depends on the signed-in user, see rowsForUser()
+		rows.push({ id: e.id!, label: p.name, kind: 'calendar', groupId: groupOf(p.group), color: e.backgroundColor ?? '#8b8372', available: true, writable: false });
+	}
+
+	const resources = entries
+		.filter((e) => e.id && isResourceId(e.id))
+		.map((e) => ({ e, p: parseResourceName(nameOf(e)) }))
+		.sort((a, b) => cmp(a.p.group, b.p.group) || cmp(a.p.floor, b.p.floor) || cmp(a.p.name, b.p.name));
+	for (const { e, p } of resources) {
+		const groupId = groupOf(p.group);
+		resourceIds.add(e.id!);
+		rows.push({ id: e.id!, label: p.name, kind: 'resource', groupId, color: e.backgroundColor ?? '#8b8372', available: true, writable: false });
+	}
+
+	const used = new Set(rows.map((r) => r.groupId));
+	// groups with calendars first, resource-only groups after (alphabetical within each block)
+	const calendarGroups = new Set(rows.filter((r) => r.kind === 'calendar').map((r) => r.groupId));
+	const groups: GroupInfo[] = [...groupLabels]
+		.map(([id, label]) => ({ id, label }))
+		.sort((a, b) => Number(!calendarGroups.has(a.id)) - Number(!calendarGroups.has(b.id)));
+	const meta: CalendarMeta = { groups, rows };
+	metaCache = { at: Date.now(), meta, ids: new Set(rows.map((r) => r.id)), resourceIds };
+	return metaCache;
+}
+
+export async function resolveCalendarId(rowId: string) {
+	const { ids } = await loadMeta();
+	if (!ids.has(rowId)) throw new Error('Unknown calendar');
+	return rowId;
+}
+
+
+export async function listEvents(rowId: string, timeMin: string, timeMax: string) {
+	const calendarId = await resolveCalendarId(rowId);
+	const out: CalEvent[] = [];
+	let pageToken: string | undefined;
+	do {
+		const res = await withBackoff(() =>
+			serviceCalendar().events.list({
+				calendarId,
+				timeMin: new Date(timeMin + 'T00:00:00Z').toISOString(),
+				timeMax: new Date(timeMax + 'T00:00:00Z').toISOString(),
+				singleEvents: true,
+				orderBy: 'startTime',
+				maxResults: 2500,
+				pageToken,
+				quotaUser: quotaUser()
+			})
+		);
+		for (const e of res.data.items ?? []) {
+			const n = normalize(e, rowId);
+			if (n) out.push(n);
+		}
+		pageToken = res.data.nextPageToken ?? undefined;
+	} while (pageToken);
+	return out;
+}
+
+/**
+ * Finds the organizer's event for a bar the user sees. Main calendar rows are the organizer
+ * themselves; for a resource calendar the copy is matched by iCalUID (and, for series, by the
+ * instance that starts on the same day).
+ */
+export async function resolveOrganizer(rowId: string, eventId: string) {
+	if (!isResourceId(rowId)) return { calendarId: await resolveCalendarId(rowId), eventId, rowKey: rowId };
+	const api = serviceCalendar();
+	const copy = (await api.events.get({ calendarId: await resolveCalendarId(rowId), eventId })).data;
+	const day = dayOf(copy.start);
+	if (!copy.iCalUID || !day) throw new Error('Event cannot be traced to its organizer');
+	const { meta } = await loadMeta();
+	for (const row of meta.rows.filter((r) => r.kind === 'calendar')) {
+		const cid = row.id;
+		const key = row.id;
+		const found = await api.events.list({ calendarId: cid, iCalUID: copy.iCalUID }).catch(() => null);
+		const master = found?.data.items?.[0];
+		if (!master?.id) continue;
+		if (!copy.recurringEventId) return { calendarId: cid, eventId: master.id, rowKey: key };
+		const t = Date.parse(day + 'T00:00:00Z');
+		const inst = await api.events.instances({
+			calendarId: cid,
+			eventId: master.id,
+			timeMin: new Date(t - 86_400_000).toISOString(),
+			timeMax: new Date(t + 2 * 86_400_000).toISOString()
+		});
+		const hit = inst.data.items?.find((i) => dayOf(i.start) === day);
+		if (hit?.id) return { calendarId: cid, eventId: hit.id, rowKey: key };
+	}
+	throw new Error('Organizer event not found in the configured calendars');
+}
+
+/** Fresh events of the touched rows, fetched inside the mutation request. */
+export async function freshRows(rowIds: string[], fromIso: string, toIso: string): Promise<Fresh> {
+	const ids = [...new Set(rowIds)];
+	const from = addDays(fromIso, -1);
+	const to = addDays(toIso, 1);
+	const lists = await Promise.all(ids.map((id) => listEvents(id, from, to).catch(() => [] as CalEvent[])));
+	// cached windows of these rows are outdated now (also after the delayed re-read of room copies)
+	await invalidateRows(ids);
+	return { from, to, rows: Object.fromEntries(ids.map((id, i) => [id, lists[i]])) };
+}
+
+/** Events for the timeline: served from the shared cache, Google only for rows that are not cached. */
+export function eventsForRows(rowIds: string[], from: string, to: string) {
+	return cachedRows(rowIds, from, to, (id) => listEvents(id, from, to).catch((e) => {
+		console.error('listEvents', id, e?.message);
+		return [] as CalEvent[];
+	}));
+}
+
+
+
+// ---------- signed-in user (OAuth) ----------
+
+export function currentUser() {
+	return getRequestEvent().locals.user;
+}
+
+/** Every write and every detail read goes through this: 401 for anonymous visitors. */
+export function requireUser() {
+	const { locals } = getRequestEvent();
+	if (!locals.user || !locals.refreshToken) error(401, 'Please sign in');
+	return { user: locals.user, refreshToken: locals.refreshToken };
+}
+
+/** Calendar client acting as the signed-in user, so Google's own sharing rules decide what may be written. */
+export function userCalendar() {
+	const { refreshToken } = requireUser();
+	const { url } = getRequestEvent();
+	const client = oauthClient(url.origin);
+	client.setCredentials({ refresh_token: refreshToken });
+	return google.calendar({ version: 'v3', auth: client });
+}
+
+/** A revoked or expired refresh token ends the session instead of failing with a cryptic error. */
+export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): Promise<T> {
+	try {
+		return await withBackoff(() => fn(userCalendar()));
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : '';
+		if (/invalid_grant|invalid_token|Invalid Credentials/i.test(msg)) {
+			clearSession(getRequestEvent().cookies);
+			error(401, 'Your session expired, please sign in again');
+		}
+		const status = (e as { code?: number }).code;
+		if (status === 403) error(403, 'You do not have permission for this calendar');
+		if (status === 404) error(404, 'Not found');
+		throw e;
+	}
+}
+
+const roleCache = new Map<string, { at: number; roles: Map<string, string> }>();
+
+/** calendar id → access role of the signed-in user (from their own calendar list) */
+export async function userRoles(): Promise<Map<string, string>> {
+	const { user } = requireUser();
+	const hit = roleCache.get(user.email);
+	if (hit && Date.now() - hit.at < 60_000) return hit.roles;
+	const roles = new Map<string, string>();
+	await asUser(async (api) => {
+		let pageToken: string | undefined;
+		do {
+			const res = await api.calendarList.list({ maxResults: 250, pageToken, showHidden: true });
+			for (const e of res.data.items ?? []) if (e.id && e.accessRole) roles.set(e.id, e.accessRole);
+			pageToken = res.data.nextPageToken ?? undefined;
+		} while (pageToken);
+	});
+	roleCache.set(user.email, { at: Date.now(), roles });
+	return roles;
+}
+
+export async function assertCanWrite(calendarId: string) {
+	const role = (await userRoles()).get(calendarId);
+	if (role !== 'owner' && role !== 'writer') error(403, 'You do not have write access to this calendar');
+}
+
+/** rows as the current visitor may use them: `writable` follows the user's own calendar settings */
+export async function rowsForVisitor(): Promise<CalendarMeta> {
+	const { meta } = await loadMeta();
+	if (!currentUser()) return meta;
+	const roles = await userRoles().catch(() => new Map<string, string>());
+	return {
+		groups: meta.groups,
+		rows: meta.rows.map((r) => ({ ...r, writable: r.kind === 'calendar' && (roles.get(r.id) === 'owner' || roles.get(r.id) === 'writer') }))
+	};
+}
+
+const opaque = (v: string) => createHash('sha256').update(v).digest('hex').slice(0, 12);
+
+/** Anonymous visitors see availability only: no titles, notes, declines; link ids are hashed. */
+export function forVisitor(events: CalEvent[]): CalEvent[] {
+	if (currentUser()) return events;
+	return events.map((e) => ({
+		id: opaque(e.id),
+		rowId: e.rowId,
+		linkId: opaque(e.linkId),
+		title: 'Booked',
+		start: e.start,
+		end: e.end,
+		status: e.status,
+		description: '',
+		fromLocal: e.fromLocal,
+		toLocal: e.toLocal
+	}));
+}

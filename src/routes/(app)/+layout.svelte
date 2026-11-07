@@ -1,0 +1,583 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { onMount, untrack } from 'svelte';
+	import { fly, slide } from 'svelte/transition';
+	import { Button, Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
+	import type { LayoutProps } from './$types';
+	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
+	import { calendarIdFromSlug, calendarSlug, isResourceId } from '#lib/calendar-id';
+	import { Timeline, setTimeline } from '#lib/timeline.svelte';
+	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
+	import type { CalEvent, RowInfo } from '#lib/types';
+
+	let { children, data }: LayoutProps = $props();
+	const timeline = new Timeline(data.meta, data.metaError);
+	setTimeline(timeline);
+	// untrack: setMeta reads timeline.meta, which would make this effect depend on what it writes
+	$effect.pre(() => {
+		const { meta, metaError } = data;
+		untrack(() => timeline.setMeta(meta, metaError));
+	});
+	const signInUrl = $derived(`/auth/login?returnTo=${encodeURIComponent(page.url.pathname + page.url.search)}`);
+
+	let innerWidth = $state(1024);
+	const mobile = $derived(innerWidth < 640);
+	const DAYW = $derived(mobile ? 38 : 44);
+	const LABW = $derived(mobile ? 104 : 150);
+	const BUF = 21;
+	const STEP = 14;
+	const LANE = 36;
+	const PAD = 8;
+	const canHover = typeof matchMedia === 'function' && matchMedia('(hover: hover) and (pointer: fine)');
+
+	let scroller: HTMLDivElement | undefined = $state();
+	let viewW = $state(1000);
+	let scrollX = $state(0);
+	let menuOpen = $state(false);
+
+	// ----- virtual window (quantised so it rarely changes) -----
+	const visLo = $derived(Math.floor(scrollX / DAYW));
+	const visHi = $derived(Math.ceil((scrollX + viewW) / DAYW));
+	const lo = $derived(Math.max(0, Math.floor((visLo - BUF) / STEP) * STEP));
+	const hi = $derived(Math.min(N_DAYS, Math.ceil((visHi + BUF) / STEP) * STEP));
+	const days = $derived(Array.from({ length: hi - lo }, (_, i) => lo + i));
+
+	// ----- rows -----
+	const groups = $derived(
+		timeline.orderGroups(timeline.meta?.groups ?? []).map((g) => ({
+			...g,
+			open: timeline.expanded.has(g.id),
+			rows: (timeline.meta?.rows ?? []).filter((r) => r.groupId === g.id)
+		}))
+	);
+	const openRowIds = $derived(groups.filter((g) => g.open).flatMap((g) => g.rows.filter((r) => r.available && !timeline.hidden.has(r.id)).map((r) => r.id)));
+
+	$effect(() => {
+		const ids = openRowIds;
+		const a = lo;
+		const b = hi;
+		if (ids.length) untrack(() => timeline.ensure(ids, a, b));
+	});
+
+	type Placed = { ev: CalEvent; s: number; e: number; lane: number; linked: boolean };
+	function pack(row: RowInfo): { items: Placed[]; lanes: number } {
+		if (timeline.hidden.has(row.id)) return { items: [], lanes: 1 };
+		const raw = timeline
+			.eventsOf(row.id)
+			.map((ev) => ({ ev, s: ev.s, e: ev.e }))
+			.filter((x) => x.e > lo - BUF && x.s < hi + BUF)
+			.sort((a, b) => a.s - b.s || b.e - a.e);
+		const laneEnd: number[] = [];
+		const items = raw.map((x) => {
+			let lane = laneEnd.findIndex((end) => end <= x.s);
+			if (lane < 0) lane = laneEnd.length;
+			laneEnd[lane] = x.e;
+			return { ...x, lane, linked: linkCount.get(x.ev.linkId)! > 1 };
+		});
+		return { items, lanes: Math.max(1, laneEnd.length) };
+	}
+	// number of rows an iCalUID occurs in (>1 ⇒ draw as linked booking)
+	const linkCount = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const g of groups) {
+			if (!g.open) continue;
+			for (const r of g.rows) {
+				if (timeline.hidden.has(r.id)) continue;
+				const seen = new Set<string>();
+				for (const e of timeline.eventsOf(r.id)) seen.add(e.linkId);
+				for (const l of seen) m.set(l, (m.get(l) ?? 0) + 1);
+			}
+		}
+		return m;
+	});
+	const packed = $derived(new Map(groups.flatMap((g) => (g.open ? g.rows : [])).map((r) => [r.id, pack(r)])));
+
+	// ----- month header -----
+	const months = $derived.by(() => {
+		const out: { key: string; label: string; s: number; e: number }[] = [];
+		let d = lo;
+		while (d < hi) {
+			const dt = dayToDate(d);
+			const first = d - dt.getUTCDate() + 1;
+			const len = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate();
+			out.push({
+				key: `${dt.getUTCFullYear()}-${dt.getUTCMonth()}`,
+				label: dt.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+				s: first,
+				e: first + len
+			});
+			d = first + len;
+		}
+		return out;
+	});
+
+	const dow = (d: number) => dayToDate(d).getUTCDay();
+	const dom = (d: number) => dayToDate(d).getUTCDate();
+	const isWeekend = (d: number) => dow(d) === 0 || dow(d) === 6;
+	const wd = (d: number) => dayToDate(d).toLocaleString('en', { weekday: 'narrow', timeZone: 'UTC' });
+
+	// ----- selection (drag / long press) -----
+	let drag = $state<{ rowId: string; a: number; b: number } | null>(null);
+	let pressTimer = 0;
+	let startPt = { x: 0, y: 0 };
+	let pointerId = -1;
+	let lastX = 0;
+	let raf = 0;
+	let board: HTMLDivElement | undefined = $state();
+
+	const urlSel = $derived.by(() => {
+		if (!page.route.id?.includes('/event/') || page.params.eventId) return null;
+		const sp = page.url.searchParams;
+		const row = calendarIdFromSlug(page.params.calendarId) ?? sp.get('row'),
+			from = sp.get('from'),
+			to = sp.get('to');
+		// the URL's `to` is exclusive, the selection is inclusive
+		return row && from && to ? { rowId: row, a: isoToDay(from), b: isoToDay(to) - 1 } : null;
+	});
+	const sel = $derived(drag ?? urlSel);
+
+	function dayAt(clientX: number) {
+		const r = board!.getBoundingClientRect();
+		return clampDay(Math.floor((clientX - r.left - LABW) / DAYW));
+	}
+
+	function beginDrag(rowId: string, d: number) {
+		drag = { rowId, a: d, b: d };
+		scroller?.setPointerCapture?.(pointerId);
+		const tick = () => {
+			if (!drag || !scroller) return;
+			const r = scroller.getBoundingClientRect();
+			if (lastX > r.right - 48) scroller.scrollLeft += 16;
+			else if (lastX < r.left + LABW + 48) scroller.scrollLeft -= 16;
+			drag.b = dayAt(lastX);
+			raf = requestAnimationFrame(tick);
+		};
+		raf = requestAnimationFrame(tick);
+	}
+
+	function onDown(e: PointerEvent) {
+		if (!data.user || e.button !== 0) return; // anonymous visitors cannot create bookings
+		const t = e.target as HTMLElement;
+		if (t.closest('[data-ev]') || t.closest('[data-label]')) return;
+		const row = t.closest<HTMLElement>('[data-row]');
+		if (!row) return;
+		const rowId = row.dataset.row!;
+		startPt = { x: e.clientX, y: e.clientY };
+		lastX = e.clientX;
+		pointerId = e.pointerId;
+		if (e.pointerType === 'mouse') {
+			e.preventDefault();
+			beginDrag(rowId, dayAt(e.clientX));
+		} else {
+			// touch / pen: long press, then drag selects several days
+			clearTimeout(pressTimer);
+			pressTimer = window.setTimeout(() => {
+				navigator.vibrate?.(12);
+				beginDrag(rowId, dayAt(startPt.x));
+			}, 380);
+		}
+	}
+	function onMove(e: PointerEvent) {
+		lastX = e.clientX;
+		if (pressTimer && !drag && Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) {
+			clearTimeout(pressTimer);
+			pressTimer = 0;
+		}
+	}
+	function onUp() {
+		clearTimeout(pressTimer);
+		pressTimer = 0;
+		if (!drag) return;
+		cancelAnimationFrame(raf);
+		const d = drag;
+		drag = null;
+		const a = Math.min(d.a, d.b),
+			b = Math.max(d.a, d.b);
+		const range = `from=${dayToIso(a)}&to=${dayToIso(b + 1)}`;
+		goto(isResourceId(d.rowId) ? `/event?row=${encodeURIComponent(d.rowId)}&${range}` : `/event/${calendarSlug(d.rowId)}?${range}`, { reset: false });
+	}
+	function onCancel() {
+		clearTimeout(pressTimer);
+		cancelAnimationFrame(raf);
+		drag = null;
+	}
+	// while a long press selection is active the page must not scroll
+	function blockScroll(e: TouchEvent) {
+		if (drag) e.preventDefault();
+	}
+
+	// ----- group reordering (native HTML drag & drop on the group header) -----
+	let dragGroup = $state<string | null>(null);
+	let dropAt = $state<{ id: string; after: boolean } | null>(null);
+	function groupDragOver(e: DragEvent, groupId: string) {
+		if (!dragGroup) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		dropAt = { id: groupId, after: e.clientY > r.top + r.height / 2 };
+	}
+	function groupDrop(e: DragEvent) {
+		if (!dragGroup || !dropAt) return;
+		e.preventDefault();
+		timeline.moveGroup(groups.map((g) => g.id), dragGroup, dropAt.id, dropAt.after);
+		dragGroup = dropAt = null;
+	}
+
+	// ----- hover highlight of linked bars (fine pointers only) -----
+	let hot = $state<string | null>(null);
+	let tip = $state<{ text: string; x: number; y: number } | null>(null);
+	function showTip(e: MouseEvent, it: Placed) {
+		if (!canHover || !canHover.matches || drag) return (tip = null);
+		const { fromLocal: f, toLocal: t } = it.ev;
+		let range: string;
+		if (f && t) {
+			// timed: show the clock times; the date only once when it is the same day
+			range = f.slice(0, 10) === t.slice(0, 10) ? `${f.slice(0, 10)} ${f.slice(11)}–${t.slice(11)}` : `${f.slice(0, 10)} ${f.slice(11)} – ${t.slice(0, 10)} ${t.slice(11)}`;
+		} else {
+			const last = dayToIso(it.e - 1);
+			range = last === it.ev.start ? it.ev.start : `${it.ev.start} – ${last}`;
+		}
+		const rooms = (linkCount.get(it.ev.linkId) ?? 1) - 1;
+		const declined = (it.ev.declinedRooms ?? []).map((id) => timeline.meta?.rows.find((r) => r.id === id)?.label ?? id);
+		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · tentative' : ''}${declined.length ? ` · declined: ${declined.join(', ')}` : ''}${it.ev.description.trim() ? ' · has note' : ''}`;
+		tip = { text, x: Math.min(e.clientX + 12, innerWidth - 260), y: e.clientY + 16 };
+	}
+
+	// ----- navigation -----
+	function scrollToDay(d: number, smooth = true) {
+		scroller?.scrollTo({ left: Math.max(0, (d - 2) * DAYW), behavior: smooth ? 'smooth' : 'instant' });
+	}
+	const go = (weeks: number) => scroller?.scrollBy({ left: weeks * 7 * DAYW, behavior: 'smooth' });
+
+	onMount(() => {
+		timeline.restore();
+		scrollToDay(TODAY, false);
+		scrollX = scroller!.scrollLeft;
+		const ro = new ResizeObserver(() => (viewW = scroller!.clientWidth));
+		ro.observe(scroller!);
+		viewW = scroller!.clientWidth;
+		scroller!.addEventListener('touchmove', blockScroll, { passive: false });
+		return () => ro.disconnect();
+	});
+
+	let ticking = false;
+	function onScroll() {
+		if (ticking) return;
+		ticking = true;
+		requestAnimationFrame(() => {
+			ticking = false;
+			scrollX = scroller!.scrollLeft;
+		});
+	}
+
+	// bottom sheet slides up on mobile, side panel opens as a column on desktop
+	const motion = (node: Element) => {
+		const duration = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
+		return mobile ? fly(node, { y: 320, duration }) : slide(node, { axis: 'x', duration });
+	};
+	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
+	function openEvent(ev: CalEvent) {
+		if (!data.user || ev.id.startsWith('optimistic:')) return; // details are for signed-in users
+		goto(`/event/${calendarSlug(ev.rowId)}/${ev.id}`, { reset: false });
+	}
+</script>
+
+<svelte:window bind:innerWidth />
+
+<div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
+	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
+		<h1 class="mr-auto text-2xl leading-none">essência <span class="text-base font-normal text-muted">· Booking</span></h1>
+		{#if timeline.loading > 0}
+			<Spinner type="dots" class="mr-2" />
+		{/if}
+		<form id="logout-form" method="POST" action="/auth/logout" class="hidden"></form>
+		{#if data.user}
+			<span class="hidden max-w-40 truncate text-sm text-muted md:inline" title={data.user.email}>{data.user.name}</span>
+			<Button type="submit" form="logout-form" size="sm" color="alternative" class="hidden sm:inline-flex">Sign out</Button>
+		{:else}
+			<Button href={signInUrl} data-sveltekit-reload size="sm" class="hidden sm:inline-flex">Sign in</Button>
+		{/if}
+		<div class="hidden items-center gap-1 sm:flex">
+			<Button size="sm" color="alternative" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></Button>
+			<Button size="sm" color="alternative" onclick={() => scrollToDay(TODAY)}>Today</Button>
+			<Button size="sm" color="alternative" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></Button>
+			{#if data.user}<Button size="sm" onclick={() => goto('/event', { reset: false })}>New booking</Button>{/if}
+		</div>
+		<div class="sm:hidden">
+			<Button id="more-menu" size="sm" color="alternative" aria-label="More"><Ellipsis size={18} /></Button>
+			<Dropdown triggeredBy="#more-menu" simple bind:isOpen={menuOpen}>
+				{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ...(data.user ? [['New booking', () => goto('/event', { reset: false })], ['Sign out', () => (document.getElementById('logout-form') as HTMLFormElement).requestSubmit()]] : [['Sign in', () => (location.href = signInUrl)]])] as [label, fn] (label)}
+					<DropdownItem class="whitespace-nowrap" onclick={() => { (fn as () => void)(); menuOpen = false; }}>{label}</DropdownItem>
+				{/each}
+			</Dropdown>
+		</div>
+	</header>
+
+	{#if timeline.error}
+		<p class="shrink-0 bg-secondary-100 px-3 py-1.5 text-sm text-secondary-800 dark:bg-secondary-900 dark:text-secondary-100">{timeline.error}</p>
+	{/if}
+
+	<div class="flex min-h-0 flex-1 md:flex-row">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			bind:this={scroller}
+			class="min-w-0 flex-1 overflow-auto overscroll-x-contain bg-surface"
+			onscroll={onScroll}
+			onpointerdown={onDown}
+			onpointermove={onMove}
+			onpointerup={onUp}
+			onpointercancel={onCancel}
+			oncontextmenu={(e) => (pressTimer || drag) && e.preventDefault()}
+			style:user-select={drag ? 'none' : undefined}
+			style:-webkit-touch-callout="none"
+		>
+			<div bind:this={board} class="relative" style="width:{LABW + N_DAYS * DAYW}px">
+				<!-- header -->
+				<div class="sticky top-0 z-20 border-b border-line bg-surface">
+					<div class="flex" style="height:28px">
+						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
+						<div class="relative" style="width:{N_DAYS * DAYW}px">
+							{#each months as m (m.key)}
+								<div class="absolute top-0 h-full overflow-clip border-l border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
+									<span class="sticky inline-block whitespace-nowrap px-2 font-display text-[15px] font-bold leading-[28px]" style="left:{LABW}px">{m.label}</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+					<div class="flex" style="height:48px">
+						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
+						<div class="relative" style="width:{N_DAYS * DAYW}px">
+							{#each days as d (d)}
+								<div
+									class="absolute top-0 flex h-full flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
+									class:weekend={isWeekend(d)}
+									class:month-start={dom(d) === 1}
+									class:today={d === TODAY}
+									style="left:{d * DAYW}px;width:{DAYW}px"
+								>
+									<span class="text-muted">{wd(d)}</span>
+									<span class="text-sm font-bold">{dom(d)}</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+					<div class="flex" style="height:28px">
+						<div class="sticky left-0 z-10 flex shrink-0 items-center bg-surface px-2 text-[11px] text-muted border-r border-line" style="width:{LABW}px">Moon</div>
+						<div class="relative" style="width:{N_DAYS * DAYW}px">
+							{#each days as d (d)}
+								{@const p = moonPath(moonPhase(d))}
+								{@const key = moonKey(d)}
+								<div class="absolute top-0 flex h-full items-center justify-center border-l border-line-soft" class:month-start={dom(d) === 1} style="left:{d * DAYW}px;width:{DAYW}px" title={key || undefined}>
+									<svg width={key ? 22 : 16} height={key ? 22 : 16} viewBox="-10 -10 20 20" aria-label={key || undefined} aria-hidden={key ? undefined : true}>
+										{#if key}<circle r="9.4" fill="none" stroke="var(--color-amber)" stroke-width="1.2" />{/if}
+										<circle r="8" fill="var(--app-surface-2)" stroke="var(--app-line)" />
+										{#if p === 'full'}<circle r="8" fill="var(--color-amber)" />{:else if p !== 'new'}<path d={p} fill="var(--color-amber)" />{/if}
+									</svg>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+
+				<!-- column shading (weekends / today) for the whole body -->
+				<div class="pointer-events-none absolute bottom-0 z-0" style="top:104px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
+					{#each days as d (d)}
+						{#if dom(d) === 1}
+							<div class="absolute top-0 h-full border-l border-line" style="left:{d * DAYW}px"></div>
+						{/if}
+						{#if isWeekend(d) || d === TODAY}
+							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === TODAY ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
+						{/if}
+					{/each}
+				</div>
+
+				<!-- groups & rows -->
+				{#each groups as g (g.id)}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="relative z-[1] flex border-b border-line bg-surface-2"
+						class:drop-before={dropAt?.id === g.id && !dropAt.after && dragGroup !== g.id}
+						class:drop-after={dropAt?.id === g.id && dropAt.after && dragGroup !== g.id}
+						class:opacity-60={dragGroup === g.id}
+						style="height:30px"
+						ondragover={(e) => groupDragOver(e, g.id)}
+						ondrop={groupDrop}
+					>
+						<button
+							data-label
+							draggable="true"
+							ondragstart={(e) => {
+								dragGroup = g.id;
+								e.dataTransfer?.setData('text/plain', g.id);
+								if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+							}}
+							ondragend={() => (dragGroup = dropAt = null)}
+							class="sticky left-0 z-10 flex shrink-0 cursor-grab items-center gap-1 bg-surface-2 px-2 text-left whitespace-nowrap"
+							style="height:29px;min-width:{LABW}px"
+							onclick={() => timeline.toggle(g.id)}
+							aria-expanded={g.open}
+						>
+							<ChevronDown size={16} class={g.open ? '' : '-rotate-90'} />
+							<span class="font-display text-[18px] font-bold">{g.label}</span>
+						</button>
+					</div>
+					{#if g.open}
+						{#each g.rows as row (row.id)}
+							{@const pk = packed.get(row.id)}
+							{@const h = (pk?.lanes ?? 1) * LANE + PAD}
+							<div class="relative flex border-b border-line-soft" data-row={row.available ? row.id : undefined} style="height:{h}px">
+								<button
+									data-label
+									class="sticky left-0 z-10 flex shrink-0 cursor-pointer items-start gap-2 border-r border-line bg-surface px-2 text-left text-sm leading-5"
+									style="width:{LABW}px;padding-top:{PAD / 2 + 3}px"
+									title={timeline.hidden.has(row.id) ? `Show ${row.label}` : `Hide ${row.label}`}
+									aria-pressed={timeline.hidden.has(row.id)}
+									onclick={() => timeline.toggleRow(row.id)}
+								>
+									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{timeline.hidden.has(row.id) ? 'transparent' : row.color};box-shadow:inset 0 0 0 2px {row.color}"></span>
+									<span class="truncate" class:text-muted={timeline.hidden.has(row.id)}>{row.label}</span>
+									{#if timeline.hidden.has(row.id)}<EyeOff size={14} class="mt-[3px] shrink-0 text-muted" />{/if}
+								</button>
+								<div class="relative z-[1]" style="width:{N_DAYS * DAYW}px">
+									{#if sel && sel.rowId === row.id}
+										<div class="absolute inset-y-0.5 rounded border-2 border-dashed border-accent bg-accent/15" style="left:{Math.min(sel.a, sel.b) * DAYW}px;width:{(Math.abs(sel.b - sel.a) + 1) * DAYW}px"></div>
+									{/if}
+									{#each pk?.items ?? [] as it (it.ev.id)}
+										<button
+											data-ev
+											class="evt absolute overflow-clip rounded-md text-left text-[13px] leading-[26px] text-white"
+											class:long={it.e - it.s > 1}
+											class:hatched={it.linked}
+											class:tentative={it.ev.status === 'tentative'}
+											class:hot={hot === it.ev.linkId}
+											style="left:{it.s * DAYW + 1}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{row.color}"
+											onmousemove={(e) => showTip(e, it)}
+											onclick={() => openEvent(it.ev)}
+											onmouseenter={() => canHover && canHover.matches && (hot = it.ev.linkId)}
+											onmouseleave={() => ((hot = null), (tip = null))}
+										>
+											{#if it.ev.declinedRooms?.length || it.ev.description.trim()}
+												<span class="evt-icons" class:long={it.e - it.s > 1} aria-hidden="true">
+													{#if it.ev.declinedRooms?.length}<TriangleAlert size={11} strokeWidth={2.5} />{/if}
+													{#if it.ev.description.trim()}<StickyNote size={11} strokeWidth={2.25} />{/if}
+												</span>
+											{/if}
+											{#if it.e - it.s <= 1}
+												<span class="short-title">{it.ev.title}</span>
+											{:else}
+												<span class="sticky min-w-0 truncate px-2" style="left:{LABW + 4}px">{it.ev.title}</span>
+											{/if}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					{/if}
+				{/each}
+				{#if !timeline.meta && !timeline.error}
+					<p class="p-4 text-sm text-muted" style="margin-left:{LABW}px">Loading calendars…</p>
+				{/if}
+			</div>
+		</div>
+
+		{#if panelOpen}
+			<aside
+				transition:motion
+				class="fixed inset-x-0 bottom-0 z-40 flex max-h-[58vh] flex-col overflow-hidden rounded-t-2xl border-t border-line bg-surface shadow-sheet md:static md:max-h-none md:w-[380px] md:shrink-0 md:rounded-none md:border-t-0 md:border-l md:shadow-sheet"
+			>
+				<!-- fixed width inside, so the content does not reflow while the column grows -->
+				<div class="flex min-h-0 w-full flex-1 flex-col md:w-[380px] md:shrink-0">{@render children()}</div>
+			</aside>
+		{:else}
+			<div class="hidden">{@render children()}</div>
+		{/if}
+	</div>
+</div>
+
+{#if tip}
+	<div class="pointer-events-none fixed z-50 max-w-60 rounded-md bg-ink px-2.5 py-1.5 text-xs text-canvas shadow-panel" style="left:{tip.x}px;top:{tip.y}px">{tip.text}</div>
+{/if}
+
+<style>
+	.drop-before {
+		box-shadow: inset 0 3px 0 var(--app-accent);
+	}
+	.drop-after {
+		box-shadow: inset 0 -3px 0 var(--app-accent);
+	}
+	.month-start {
+		border-left-color: var(--app-line);
+	}
+	.weekend {
+		background: var(--app-weekend);
+	}
+	.today {
+		background: var(--app-today);
+	}
+	.evt {
+		background: color-mix(in oklab, var(--c) 88%, black);
+		touch-action: pan-x pan-y;
+	}
+	/* one-day bars: small text that wraps anywhere so the title stays readable */
+	.evt-icons {
+		position: absolute;
+		bottom: 2px;
+		right: 2px;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		padding: 2px 4px;
+		border-radius: 999px;
+		background: rgb(20 14 8 / 0.85);
+		color: #fff;
+		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35);
+	}
+	/* long bars: the badge sticks to the right edge of the viewport while the bar scrolls */
+	.evt.long {
+		display: flex;
+	}
+	.evt-icons.long {
+		position: sticky;
+		right: 6px;
+		bottom: auto;
+		order: 2;
+		margin: 0 4px 0 auto;
+		align-self: flex-end;
+		margin-bottom: 2px;
+		flex-shrink: 0;
+	}
+	.short-title {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
+		padding: 0 3px;
+		font-size: 9.5px;
+		line-height: 10px;
+		word-break: break-all;
+		white-space: normal;
+		margin-top: 1px;
+	}
+	.evt:has(.short-title) {
+		height: 32px;
+		display: flex;
+		align-items: center;
+	}
+	.evt.hatched {
+		background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.18) 0 4px, transparent 4px 9px);
+		box-shadow: inset 3px 0 0 rgb(0 0 0 / 0.35);
+	}
+	.evt.tentative {
+		opacity: 0.7;
+		outline: 1px dashed rgb(255 255 255 / 0.7);
+		outline-offset: -3px;
+	}
+	.evt.hot {
+		outline: 2px solid var(--app-ink);
+		outline-offset: 1px;
+		z-index: 2;
+	}
+</style>
