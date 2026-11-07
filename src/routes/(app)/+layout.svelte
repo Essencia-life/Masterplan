@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
 	import { fly, slide } from 'svelte/transition';
-	import { Button, Dropdown, DropdownItem } from 'flowbite-svelte';
+	import { Button, Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 	import type { LayoutProps } from './$types';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
 	import { calendarIdFromSlug, calendarSlug, isResourceId } from '#lib/calendar-id';
@@ -288,7 +288,9 @@
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
 	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
 		<h1 class="mr-auto text-2xl leading-none">essência <span class="text-base font-normal text-muted">· Booking</span></h1>
-		{#if timeline.loading > 0}<span class="text-xs text-muted">loading…</span>{/if}
+		{#if timeline.loading > 0}
+			<Spinner type="dots" class="mr-2" />
+		{/if}
 		<form id="logout-form" method="POST" action="/auth/logout" class="hidden"></form>
 		{#if data.user}
 			<span class="hidden max-w-40 truncate text-sm text-muted md:inline" title={data.user.email}>{data.user.name}</span>
