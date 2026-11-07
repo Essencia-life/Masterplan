@@ -2,8 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { Button, Checkbox, Input, Label, Select, Textarea } from 'flowbite-svelte';
-	import { X } from '@lucide/svelte';
+	import { Badge, Button, Checkbox, CloseButton, Input, Label, Select, TabItem, Tabs, Textarea, Toggle } from 'flowbite-svelte';
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { calendarIdFromSlug } from '#lib/calendar-id';
 	import { getTimeline } from '#lib/timeline.svelte';
@@ -259,21 +258,24 @@
 
 <div class="flex items-center gap-2 border-b border-line px-4 py-3">
 	<h2 class="mr-auto text-xl">{eventId ? 'Edit booking' : 'New booking'}</h2>
-	<button class="rounded p-1 hover:bg-surface-2" onclick={close} aria-label="Close"><X size={18} /></button>
+	<CloseButton onclick={close} />
 </div>
 
-<div class="flex gap-1 border-b border-line px-3 pt-2">
-	{#each [['details', 'Details'], ['resources', `Resources (${form.resourceIds.length})`], ...(conflicts.length ? [['conflicts', `Conflicts (${conflicts.length})`]] : [])] as [id, label] (id)}
-		<button class="rounded-t-md border-b-2 px-3 py-1.5 text-sm {tab === id ? 'border-accent font-bold text-accent' : 'border-transparent text-muted'}" onclick={() => (tab = id as typeof tab)}>{label}</button>
-	{/each}
-</div>
+<!-- the tab bodies are rendered below; the items only carry the titles -->
+<Tabs bind:selected={tab} tabStyle="underline" class="px-3">
+	<TabItem key="details" title="Details" />
+	<TabItem key="resources" title="Resources ({form.resourceIds.length})" />
+	{#if conflicts.length}<TabItem key="conflicts" title="Conflicts ({conflicts.length})" />{/if}
+</Tabs>
 
 <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
 	{#if loadError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{loadError}</p>{/if}
 	{#if conflicts.length}
-		<button type="button" class="w-full rounded-md bg-amber/15 px-3 py-2 text-left text-sm" onclick={() => (tab = 'conflicts')}>⚠ {conflicts.length} conflicting {conflicts.length === 1 ? 'booking' : 'bookings'} – release or move them</button>
+		<button type="button" class="block w-full text-left" onclick={() => (tab = 'conflicts')}>
+			<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {conflicts.length} conflicting {conflicts.length === 1 ? 'booking' : 'bookings'} – release or move them</Badge>
+		</button>
 	{/if}
-	{#if retreatGap}<p class="rounded-md bg-amber/15 px-3 py-2 text-sm">⚠ {retreatGap}</p>{/if}
+	{#if retreatGap}<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {retreatGap}</Badge>{/if}
 
 	{#if tab === 'details'}
 		<div>
@@ -359,7 +361,7 @@
 			<fieldset>
 				<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
 					{g.label}
-					<button type="button" class="text-xs font-normal text-accent underline" onclick={() => toggleGroup(g.rows.map((r) => r.id))}>toggle all</button>
+					<Toggle size="small" class="text-xs font-normal" checked={g.rows.every((r) => form.resourceIds.includes(r.id))} onchange={() => toggleGroup(g.rows.map((r) => r.id))}>All</Toggle>
 				</legend>
 				<div class="grid grid-cols-2 gap-x-3 gap-y-1">
 					{#each g.rows as r (r.id)}
