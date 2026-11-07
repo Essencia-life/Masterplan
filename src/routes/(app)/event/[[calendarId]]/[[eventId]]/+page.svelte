@@ -377,5 +377,5 @@
 <div class="flex items-center gap-2 border-t border-line p-3">
 	{#if form.id}<Button color="red" outline size="sm" onclick={remove} disabled={busy}>Delete</Button>{/if}
 	<Button color="alternative" size="sm" class="ml-auto" onclick={close}>Cancel</Button>
-	<Button size="sm" onclick={save} disabled={!valid || busy}>{busy ? 'Saving…' : 'Save'}</Button>
+	<Button size="sm" onclick={save} loading={busy} disabled={!valid}>Save</Button>
 </div>

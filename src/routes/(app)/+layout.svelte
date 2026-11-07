@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
+	import { Button, Dropdown, DropdownItem } from 'flowbite-svelte';
 	import type { LayoutProps } from './$types';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
 	import { calendarIdFromSlug, calendarSlug, isResourceId } from '#lib/calendar-id';
@@ -276,7 +277,7 @@
 	}
 </script>
 
-<svelte:window bind:innerWidth onkeydown={(e) => e.key === 'Escape' && menuOpen && (menuOpen = false)} />
+<svelte:window bind:innerWidth />
 
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
 	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
@@ -285,25 +286,23 @@
 		<form id="logout-form" method="POST" action="/auth/logout" class="hidden"></form>
 		{#if data.user}
 			<span class="hidden max-w-40 truncate text-sm text-muted md:inline" title={data.user.email}>{data.user.name}</span>
-			<span class="hidden sm:inline-flex"><button type="submit" form="logout-form" class="btn">Sign out</button></span>
+			<Button type="submit" form="logout-form" size="sm" color="alternative" class="hidden sm:inline-flex">Sign out</Button>
 		{:else}
-			<span class="hidden sm:inline-flex"><a class="btn btn-primary" href={signInUrl} data-sveltekit-reload>Sign in</a></span>
+			<Button href={signInUrl} data-sveltekit-reload size="sm" class="hidden sm:inline-flex">Sign in</Button>
 		{/if}
 		<div class="hidden items-center gap-1 sm:flex">
-			<button class="btn" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></button>
-			<button class="btn" onclick={() => scrollToDay(TODAY)}>Today</button>
-			<button class="btn" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></button>
-			{#if data.user}<button class="btn btn-primary" onclick={() => goto('/event', { reset: false })}>New booking</button>{/if}
+			<Button size="sm" color="alternative" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></Button>
+			<Button size="sm" color="alternative" onclick={() => scrollToDay(TODAY)}>Today</Button>
+			<Button size="sm" color="alternative" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></Button>
+			{#if data.user}<Button size="sm" onclick={() => goto('/event', { reset: false })}>New booking</Button>{/if}
 		</div>
-		<div class="relative sm:hidden">
-			<button class="btn" aria-label="More" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}><Ellipsis size={18} /></button>
-			{#if menuOpen}
-				<div class="absolute right-0 z-30 mt-1 w-40 rounded-lg border border-line bg-surface p-1 shadow-panel">
-					{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ...(data.user ? [['New booking', () => goto('/event', { reset: false })], ['Sign out', () => (document.getElementById('logout-form') as HTMLFormElement).requestSubmit()]] : [['Sign in', () => (location.href = signInUrl)]])] as [label, fn] (label)}
-						<button class="block w-full rounded px-3 py-2 text-left hover:bg-surface-2" onclick={() => { (fn as () => void)(); menuOpen = false; }}>{label}</button>
-					{/each}
-				</div>
-			{/if}
+		<div class="sm:hidden">
+			<Button id="more-menu" size="sm" color="alternative" aria-label="More"><Ellipsis size={18} /></Button>
+			<Dropdown triggeredBy="#more-menu" simple bind:isOpen={menuOpen}>
+				{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ...(data.user ? [['New booking', () => goto('/event', { reset: false })], ['Sign out', () => (document.getElementById('logout-form') as HTMLFormElement).requestSubmit()]] : [['Sign in', () => (location.href = signInUrl)]])] as [label, fn] (label)}
+					<DropdownItem onclick={() => { (fn as () => void)(); menuOpen = false; }}>{label}</DropdownItem>
+				{/each}
+			</Dropdown>
 		</div>
 	</header>
 
@@ -491,28 +490,6 @@
 {/if}
 
 <style>
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-		border: 1px solid var(--app-line);
-		border-radius: 0.5rem;
-		background: var(--app-surface);
-		padding: 0.35rem 0.7rem;
-		font-size: 0.9rem;
-	}
-	.btn:hover {
-		background: var(--app-surface-2);
-	}
-	.btn-primary {
-		background: var(--app-accent);
-		border-color: var(--app-accent);
-		color: var(--app-surface);
-	}
-	.btn-primary:hover {
-		background: var(--app-accent);
-		opacity: 0.9;
-	}
 	.drop-before {
 		box-shadow: inset 0 3px 0 var(--app-accent);
 	}
