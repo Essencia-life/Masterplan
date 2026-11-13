@@ -12,7 +12,7 @@ export const supportsJobs = (groupLabel: string, calendarLabel: string) => JOB_C
 export const jobSchema = z
 	.object({
 		/** internal name, stable once people have signed up (Telegram buttons, sign-up storage) */
-		key: z.string().regex(/^[a-z0-9]+$/, 'Job key: lowercase letters and digits only'),
+		key: z.string().regex(/^[a-z0-9]{1,16}$/, 'Job key: up to 16 lowercase letters and digits'),
 		title: z.string().trim().min(1, 'Every job needs a title').max(60),
 		slots: z.number({ error: 'Slots must be a number' }).int().min(1, 'At least one slot').max(20),
 		/** the person is asked what they offer, only meaningful for a single slot */
@@ -30,7 +30,7 @@ export const jobsSchema = z
 /** Stable name of a kind of event, e.g. "lunch"; part of the sign-up storage key. */
 export const typeSchema = z
 	.string()
-	.max(40)
+	.max(24, 'Event key: at most 24 characters')
 	.regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Event key: lowercase letters, digits and single hyphens only');
 
 export type Job = z.infer<typeof jobSchema>;
@@ -38,14 +38,14 @@ export type Job = z.infer<typeof jobSchema>;
 export const newJob = (): Job => ({ key: '', title: '', slots: 1, askDetails: false, sos: true });
 
 /** "🧚 Fairy of the Week" → "fairy-of-the-week" */
-export const slugify = (s: string) =>
+export const slugify = (s: string, max = 24) =>
 	s
 		.normalize('NFKD')
 		.replace(/[̀-ͯ]/g, '')
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '')
-		.slice(0, 40)
+		.slice(0, max)
 		.replace(/-+$/, '');
 
 /** Gives new jobs their key (from the title, never changed afterwards) and drops settings that do not apply. */
@@ -54,7 +54,7 @@ export function prepareJobs(jobs: Job[]): Job[] {
 	return jobs.map((j) => {
 		let key = j.key;
 		if (!key) {
-			const base = slugify(j.title).replaceAll('-', '') || 'job';
+			const base = slugify(j.title, 14).replaceAll('-', '') || 'job';
 			key = base;
 			for (let n = 2; used.has(key); n++) key = base + n;
 			used.add(key);

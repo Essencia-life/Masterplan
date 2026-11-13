@@ -19,7 +19,7 @@ describe('slugify', () => {
 		expect(slugify('🔥')).toBe('');
 	});
 	it('never ends with a hyphen after cutting', () => {
-		expect(slugify('a'.repeat(39) + ' b')).toBe('a'.repeat(39));
+		expect(slugify('a'.repeat(23) + ' b')).toBe('a'.repeat(23));
 	});
 });
 
@@ -27,6 +27,7 @@ describe('prepareJobs', () => {
 	it('derives keys from titles and keeps existing ones', () => {
 		const out = prepareJobs([job({ key: 'chef' }), job({ title: 'Lunch Cleaning' }), job({ title: '🔥' })]);
 		expect(out.map((j) => j.key)).toEqual(['chef', 'lunchcleaning', 'job']);
+		expect(prepareJobs([job({ title: 'Fairy of the Week Special' })])[0].key.length).toBeLessThanOrEqual(16);
 	});
 	it('makes new keys unique', () => {
 		expect(prepareJobs([job(), job(), job({ key: 'chef2' })]).map((j) => j.key)).toEqual(['chef', 'chef3', 'chef2']);
