@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRecurrence, firstOccurrence, moonDates } from './recurrence';
+import { buildRecurrence, firstOccurrence, moonDates, parseRecurrence } from './recurrence';
 
 describe('weekly', () => {
 	it('starts on the first matching weekday and lists the days', () => {
@@ -30,5 +30,25 @@ describe('moon', () => {
 	});
 	it('is null when nothing matches', () => {
 		expect(firstOccurrence({ ...rule, until: '2026-11-14' }, '2026-11-13')).toBeNull();
+	});
+});
+
+describe('parseRecurrence', () => {
+	it('reads back what buildRecurrence writes', () => {
+		const weekly = { kind: 'weekly', weekdays: [1, 3], until: '2026-12-31' } as const;
+		for (const allDay of [true, false]) {
+			expect(parseRecurrence(buildRecurrence(weekly, '2026-11-02', allDay)!.recurrence).repeat).toEqual(weekly);
+		}
+		const open = parseRecurrence(['RRULE:FREQ=WEEKLY;BYDAY=FR']).repeat;
+		expect(open).toEqual({ kind: 'weekly', weekdays: [5], until: undefined });
+		const moon = { kind: 'moon', phase: 'FULL_MOON', relation: 'LAST_BEFORE', weekday: 5, until: '2027-06-30' } as const;
+		const lines = buildRecurrence(moon, '2026-11-13', false, '19:00')!.recurrence;
+		expect(parseRecurrence(lines, JSON.stringify(moon)).repeat).toEqual(moon);
+	});
+	it('leaves everything else alone', () => {
+		for (const lines of [['RRULE:FREQ=DAILY'], ['RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO'], ['RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=4'], ['RDATE:20261120T100000Z']]) {
+			expect(parseRecurrence(lines)).toEqual({ custom: lines });
+		}
+		expect(parseRecurrence([])).toEqual({ custom: [] });
 	});
 });

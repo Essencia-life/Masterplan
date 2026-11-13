@@ -76,6 +76,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					if (id !== eventId) return; // another booking was opened meanwhile
 					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId, jobsScope: 'series' };
 					savedType = e.type;
+					rep = repFromEvent(e);
+					repBase = JSON.stringify(rep);
 					jobsBase = JSON.stringify([e.jobs, e.type, 'series']);
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
@@ -105,6 +107,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			};
 			savedType = '';
 			rep = newRep();
+			repBase = JSON.stringify(rep);
+			repeatCustom = [];
 			jobsBase = JSON.stringify([[], '', 'series']);
 		}
 	});
@@ -129,14 +133,26 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		form.resourceIds = all ? form.resourceIds.filter((x) => !ids.includes(x)) : [...new Set([...form.resourceIds, ...ids])];
 	}
 
-	// ----- repeat (new events only) -----
+	// ----- repeat: new events, single events becoming a series, and existing series (changes apply to the whole series) -----
 	const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]] as const;
 	const MOON_LABELS = { NEW_MOON: 'New moon', FIRST_QUARTER: 'First quarter', FULL_MOON: 'Full moon', LAST_QUARTER: 'Last quarter' } as const;
 	const RELATION_LABELS = { EXACT: 'on the day of', LAST_BEFORE: 'last one before', LAST_ON_OR_BEFORE: 'last one on or before', FIRST_AFTER: 'first one after', FIRST_ON_OR_AFTER: 'first one on or after' } as const;
-	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon', days: [1] as number[], until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: 5 });
+	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon' | 'keep', days: [1] as number[], until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: 5 });
 	let rep = $state(newRep());
+	let repBase = $state(JSON.stringify(newRep()));
+	let repeatCustom = $state<string[]>([]);
+	const inSeriesNow = $derived(!!form.seriesId);
+	/** the repeat as stored on the event; unknown recurrence rules are kept as they are */
+	function repFromEvent(e: EventDetail) {
+		const r = newRep();
+		repeatCustom = e.repeatCustom;
+		if (e.repeat?.kind === 'weekly') Object.assign(r, { kind: 'weekly', days: e.repeat.weekdays, until: e.repeat.until ?? '' });
+		else if (e.repeat?.kind === 'moon') Object.assign(r, { kind: 'moon', phase: e.repeat.phase, relation: e.repeat.relation, weekday: e.repeat.weekday, until: e.repeat.until });
+		else if (e.repeatCustom.length) r.kind = 'keep';
+		return r;
+	}
 	const repeat = $derived<Repeat | undefined>(
-		form.id ? undefined
+		JSON.stringify(rep) === repBase ? undefined
 		: rep.kind === 'weekly' ? { kind: 'weekly', weekdays: rep.days, until: rep.until || undefined }
 		: rep.kind === 'moon' ? { kind: 'moon', phase: rep.phase, relation: rep.relation, weekday: Number(rep.weekday), until: rep.until }
 		: undefined
@@ -387,10 +403,15 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						<Label for="f-status" class="mb-1">Status</Label>
 						<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />
 					</div>
-					{#if !form.id}
 						<div class="space-y-2">
 							<Label for="f-rep" class="mb-1">Repeat</Label>
-							<Select id="f-rep" items={[{ value: 'none', name: 'Does not repeat' }, { value: 'weekly', name: 'Weekly' }, { value: 'moon', name: 'By moon phase' }]} bind:value={rep.kind} />
+							<Select id="f-rep" items={[...(inSeriesNow ? (repeatCustom.length ? [{ value: 'keep', name: 'Custom (set in Google Calendar)' }] : []) : [{ value: 'none', name: 'Does not repeat' }]), { value: 'weekly', name: 'Weekly' }, { value: 'moon', name: 'By moon phase' }]} bind:value={rep.kind} />
+							{#if rep.kind === 'keep'}
+								<p class="text-xs text-muted">{repeatCustom.join(' · ')}</p>
+							{/if}
+							{#if inSeriesNow && rep.kind !== 'keep' && JSON.stringify(rep) !== repBase}
+								<p class="text-xs text-muted">Changes the whole series. Edits to single events in it may be reset.</p>
+							{/if}
 							{#if rep.kind === 'weekly'}
 								<div class="flex flex-wrap gap-x-4 gap-y-1">
 									{#each WEEKDAYS as [label, d] (d)}
@@ -412,12 +433,11 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 									<Input id="f-until" type="date" min={form.start} bind:value={rep.until} />
 								</div>
 								<p class="text-xs text-muted">
-									{#if moonPreview.length}{moonPreview.length} dates, from {moonPreview.slice(0, 4).join(', ')}{moonPreview.length > 4 ? ' …' : ''}. The event starts on the first one; add more later by creating a new series.{:else}No dates in that period.{/if}
+									{#if moonPreview.length}{moonPreview.length} dates from {moonPreview.slice(0, 4).join(', ')}{moonPreview.length > 4 ? ' …' : ''}. The series lists all of them, up to about two years.{:else}No dates in that period.{/if}
 								</p>
 							{/if}
 							{#if repeatError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{repeatError}</p>{/if}
 						</div>
-					{/if}
 
 					<div>
 						<Label for="f-desc" class="mb-1">Notes</Label>

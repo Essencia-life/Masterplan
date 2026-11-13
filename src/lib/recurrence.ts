@@ -13,7 +13,8 @@ export const repeatSchema = z.discriminatedUnion('kind', [
 export type Repeat = z.infer<typeof repeatSchema>;
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
-const MAX_DAYS = 400;
+// about two years; a longer moon series loses its oldest dates when it is changed (shortcut, extend when needed)
+const MAX_DAYS = 800;
 const compact = (iso: string) => iso.replaceAll('-', '');
 const dow = (iso: string) => new Date(iso + 'T00:00:00Z').getUTCDay();
 
@@ -47,4 +48,31 @@ export function buildRecurrence(r: Repeat, from: string, allDay: boolean, startT
 	const time = `T${startTime.replace(':', '')}00`;
 	const line = allDay ? `RDATE;VALUE=DATE:${rest.map(compact).join(',')}` : `RDATE;TZID=${TIME_ZONE}:${rest.map((d) => compact(d) + time).join(',')}`;
 	return { start, recurrence: rest.length ? [line] : [] };
+}
+
+/**
+ * What a series' recurrence lines mean in the UI. Only what this app writes is understood:
+ * a plain weekly rule, or a moon rule (stored as private property `repeat`, with the dates as RDATE).
+ * Anything else comes back as `custom` and is left untouched.
+ */
+export function parseRecurrence(lines: string[], moonProp?: string | null): { repeat?: Repeat; custom: string[] } {
+	const rules = lines.filter((l) => l.startsWith('RRULE:'));
+	if (lines.length && !rules.length && lines.every((l) => l.startsWith('RDATE')) && moonProp) {
+		try {
+			const r = repeatSchema.safeParse(JSON.parse(moonProp));
+			if (r.success && r.data.kind === 'moon') return { repeat: r.data, custom: [] };
+		} catch {
+			// not ours
+		}
+	}
+	if (lines.length === 1 && rules.length === 1) {
+		const kv = Object.fromEntries(rules[0].slice(6).split(';').map((p) => p.split('=')));
+		const days = (kv.BYDAY ?? '').split(',');
+		const simple = Object.keys(kv).every((k) => ['FREQ', 'BYDAY', 'UNTIL', 'INTERVAL', 'WKST'].includes(k));
+		if (simple && kv.FREQ === 'WEEKLY' && (kv.INTERVAL ?? '1') === '1' && days.every((d) => BYDAY.includes(d)) && (!kv.UNTIL || /^\d{8}(T\d{6}Z)?$/.test(kv.UNTIL))) {
+			const u = kv.UNTIL;
+			return { repeat: { kind: 'weekly', weekdays: days.map((d) => BYDAY.indexOf(d)), until: u && `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}` }, custom: [] };
+		}
+	}
+	return { custom: lines };
 }

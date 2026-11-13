@@ -1,4 +1,5 @@
 import type { Job } from '#lib/jobs';
+import type { Repeat } from '#lib/recurrence';
 
 export type RowInfo = {
 	/** Google calendar id */
@@ -57,4 +58,7 @@ export type EventDetail = {
 	type: string;
 	/** master event of a series, '' for single events; set for instances and for the master itself */
 	seriesId: string;
+	/** how the series repeats, when this app can show it; `repeatCustom` holds recurrence lines it does not understand */
+	repeat?: Repeat;
+	repeatCustom: string[];
 };

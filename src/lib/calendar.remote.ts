@@ -20,7 +20,7 @@ import {
 	serviceCalendar
 } from '#lib/server/google';
 import { DAY_MS, TIME_ZONE, addDaysIso } from '#lib/time';
-import { buildRecurrence, repeatSchema } from '#lib/recurrence';
+import { buildRecurrence, parseRecurrence, repeatSchema } from '#lib/recurrence';
 import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -62,6 +62,9 @@ export const getEvent = query(
 						}
 					}
 				}
+				// the recurrence lines live on the series master
+				const master = ev.recurringEventId ? (await serviceCalendar().events.get({ calendarId, eventId: ev.recurringEventId })).data : ev;
+				const { repeat, custom } = parseRecurrence(master.recurrence ?? [], master.extendedProperties?.private?.repeat);
 				const start = dayOf(ev.start);
 				const allDay = !!ev.start?.date;
 				const end = allDay ? ev.end!.date! : localDay(ev.end?.dateTime ?? ev.start?.dateTime);
@@ -80,7 +83,9 @@ export const getEvent = query(
 					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!),
 					jobs: parseJobs(ev.extendedProperties?.private?.jobs),
 					type: ev.extendedProperties?.private?.type ?? '',
-					seriesId: ev.recurringEventId ?? (ev.recurrence?.length ? ev.id! : '')
+					seriesId: ev.recurringEventId ?? (ev.recurrence?.length ? ev.id! : ''),
+					repeat,
+					repeatCustom: custom
 				};
 			} catch {
 				// not in this calendar, try the next
@@ -126,18 +131,7 @@ export const saveEvent = command(saveSchema, async (input) => {
 	for (const r of input.resourceIds) if (!resourceIds.has(r)) error(400, 'Unknown resource');
 	const calendarId = await resolveCalendarId(input.calendar);
 	await assertCanWrite(calendarId);
-	let recurrence: string[] | undefined;
-	if (input.repeat) {
-		if (input.id) error(400, 'Repeating can only be set when creating an event');
-		const r = buildRecurrence(input.repeat, input.start, input.allDay, input.startTime);
-		if (!r) error(400, 'The repeat rule has no dates in that period');
-		// the event itself becomes the first occurrence of the rule
-		input.end = addDaysIso(input.end, Math.round((Date.parse(r.start) - Date.parse(input.start)) / DAY_MS));
-		input.start = r.start;
-		recurrence = r.recurrence;
-	}
 	const requestBody: calendar_v3.Schema$Event = {
-		...(recurrence?.length ? { recurrence } : {}),
 		summary: input.title,
 		description: input.description,
 		status: input.status,
@@ -147,32 +141,60 @@ export const saveEvent = command(saveSchema, async (input) => {
 	};
 	// rows/dates of the previous state also change (rooms released, event moved)
 	const before = input.id ? (await serviceCalendar().events.get({ calendarId, eventId: input.id })).data : null;
-	// jobs live in private extended properties; null removes a property in a patch
-	let series: { id: string; props: Record<string, string> } | undefined;
+	const masterId = before?.recurringEventId ?? (before?.recurrence?.length ? before.id! : undefined);
+	// what goes to the series master (the instances inherit it); private properties: null removes one in a patch
+	const forMaster: calendar_v3.Schema$Event = {};
+	const props: Record<string, string | null> = {};
+	const masterProps: Record<string, string | null> = {};
+	const ownProps = masterId && masterId !== input.id ? masterProps : props;
+	let lastDay = input.end;
+	let firstDay = input.start;
 	if (input.jobs) {
 		if (!(await calendarSupportsJobs(input.calendar))) error(400, 'Jobs are not available in this calendar');
 		if (isLegacyJobs(before?.extendedProperties?.private?.jobs)) error(409, 'This event still has sign-ups in the bot\'s older format, its jobs cannot be edited here yet');
-		const props = input.jobs.length
+		const jobProps = input.jobs.length
 			? { jobs: JSON.stringify(input.jobs), type: input.type || slugify(input.title) || 'event' }
-			: { jobs: null as unknown as string, type: null as unknown as string };
-		const master = before?.recurringEventId ?? (before?.recurrence?.length ? before.id : undefined);
-		if (input.jobsScope === 'series' && master && master !== input.id) series = { id: master, props };
-		else requestBody.extendedProperties = { private: props };
+			: { jobs: null, type: null };
+		Object.assign(input.jobsScope === 'series' ? ownProps : props, jobProps);
 	}
+	if (input.repeat) {
+		// the series' first event: the master, or this event (a new series, or a single event becoming one)
+		const m = masterId && masterId !== input.id ? (await serviceCalendar().events.get({ calendarId, eventId: masterId })).data : before;
+		const allDay = m ? !!m.start?.date : input.allDay;
+		const from = m ? dayOf(m.start) : input.start;
+		const r = buildRecurrence(input.repeat, from, allDay, m ? (allDay ? undefined : localTime(m.start!.dateTime!)) : input.startTime);
+		if (!r) error(400, 'The repeat rule has no dates in that period');
+		const delta = Math.round((Date.parse(r.start) - Date.parse(from)) / DAY_MS);
+		const target = masterId && masterId !== input.id ? forMaster : requestBody;
+		target.recurrence = r.recurrence;
+		(target === forMaster ? masterProps : props).repeat = input.repeat.kind === 'moon' ? JSON.stringify(input.repeat) : null;
+		if (delta) {
+			// the first date moves; instance ids change with it
+			const shift = (t: calendar_v3.Schema$EventDateTime): calendar_v3.Schema$EventDateTime =>
+				t.date ? { date: addDaysIso(t.date, delta) } : { dateTime: `${addDaysIso(localDay(t.dateTime), delta)}T${localTime(t.dateTime!)}:00`, timeZone: TIME_ZONE };
+			const base = m ?? { start: requestBody.start, end: requestBody.end };
+			target.start = shift(base.start!);
+			target.end = shift(base.end!);
+		}
+		firstDay = [firstDay, from].sort()[0];
+		lastDay = [lastDay, input.repeat.until ?? addDaysIso(from, 400)].sort().at(-1)!;
+	}
+	if (Object.keys(props).length) requestBody.extendedProperties = { private: props as Record<string, string> };
+	if (Object.keys(masterProps).length) forMaster.extendedProperties = { private: masterProps as Record<string, string> };
 	// written as the signed-in user, so Google's calendar sharing decides what is allowed
 	const res = await asUser((api) =>
 		input.id
 			? api.events.patch({ calendarId, eventId: input.id, requestBody, sendUpdates: 'none' })
 			: api.events.insert({ calendarId, requestBody, sendUpdates: 'none' })
 	);
-	// a series keeps its jobs on the master event; the instances inherit them
-	if (series) await asUser((api) => api.events.patch({ calendarId, eventId: series!.id, requestBody: { extendedProperties: { private: series!.props } }, sendUpdates: 'none' }));
+	if (Object.keys(forMaster).length) await asUser((api) => api.events.patch({ calendarId, eventId: masterId!, requestBody: forMaster, sendUpdates: 'none' }));
 	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
 	const [oldStart, oldEnd] = before ? eventRange(before) : [input.start, input.end];
+	// a changed repeat adds and removes events on other days too
 	const fresh = await freshRows(
 		[input.calendar, ...oldRooms, ...input.resourceIds],
-		[oldStart, input.start].sort()[0],
-		[oldEnd, input.end].sort().at(-1)!
+		[oldStart, firstDay].sort()[0],
+		[oldEnd, lastDay].sort().at(-1)!
 	);
 	return { id: res.data.id!, linkId: res.data.iCalUID ?? res.data.id!, calendar: input.calendar, fresh };
 });
