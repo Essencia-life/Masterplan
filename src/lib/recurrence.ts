@@ -7,7 +7,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const weekday = z.number().int().min(0).max(6); // 0 = Sunday, like Date.getUTCDay()
 
 export const repeatSchema = z.discriminatedUnion('kind', [
-	z.object({ kind: z.literal('weekly'), weekdays: z.array(weekday).min(1).max(7), until: isoDate.optional() }),
+	z.object({ kind: z.literal('weekly'), interval: z.number().int().min(1).max(8).default(1), weekdays: z.array(weekday).min(1).max(7), until: isoDate.optional() }),
 	z.object({ kind: z.literal('moon'), phase: z.enum(MOON_PHASES), relation: z.enum(MOON_RELATIONS), weekday, until: isoDate })
 ]);
 export type Repeat = z.infer<typeof repeatSchema>;
@@ -42,7 +42,8 @@ export function buildRecurrence(r: Repeat, from: string, allDay: boolean, startT
 	if (r.kind === 'weekly') {
 		const until = r.until ? `;UNTIL=${compact(r.until)}${allDay ? '' : 'T235959Z'}` : '';
 		const days = [...new Set(r.weekdays)].sort().map((d) => BYDAY[d]).join(',');
-		return { start, recurrence: [`RRULE:FREQ=WEEKLY;BYDAY=${days}${until}`] };
+		const every = r.interval > 1 ? `;INTERVAL=${r.interval}` : '';
+		return { start, recurrence: [`RRULE:FREQ=WEEKLY${every};BYDAY=${days}${until}`] };
 	}
 	const rest = moonDates(r, start, r.until).slice(1);
 	const time = `T${startTime.replace(':', '')}00`;
@@ -69,9 +70,9 @@ export function parseRecurrence(lines: string[], moonProp?: string | null): { re
 		const kv = Object.fromEntries(rules[0].slice(6).split(';').map((p) => p.split('=')));
 		const days = (kv.BYDAY ?? '').split(',');
 		const simple = Object.keys(kv).every((k) => ['FREQ', 'BYDAY', 'UNTIL', 'INTERVAL', 'WKST'].includes(k));
-		if (simple && kv.FREQ === 'WEEKLY' && (kv.INTERVAL ?? '1') === '1' && days.every((d) => BYDAY.includes(d)) && (!kv.UNTIL || /^\d{8}(T\d{6}Z)?$/.test(kv.UNTIL))) {
+		if (simple && kv.FREQ === 'WEEKLY' && /^[1-8]$/.test(kv.INTERVAL ?? '1') && days.every((d) => BYDAY.includes(d)) && (!kv.UNTIL || /^\d{8}(T\d{6}Z)?$/.test(kv.UNTIL))) {
 			const u = kv.UNTIL;
-			return { repeat: { kind: 'weekly', weekdays: days.map((d) => BYDAY.indexOf(d)), until: u && `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}` }, custom: [] };
+			return { repeat: { kind: 'weekly', interval: Number(kv.INTERVAL ?? 1), weekdays: days.map((d) => BYDAY.indexOf(d)), until: u && `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}` }, custom: [] };
 		}
 	}
 	return { custom: lines };

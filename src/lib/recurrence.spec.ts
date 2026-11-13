@@ -8,8 +8,8 @@ describe('weekly', () => {
 		expect(r).toEqual({ start: '2026-11-16', recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO,WE'] });
 	});
 	it('ends on the day for all-day events and at the end of the day (UTC) for timed ones', () => {
-		expect(buildRecurrence({ kind: 'weekly', weekdays: [1], until: '2026-12-31' }, '2026-11-02', true)!.recurrence[0]).toContain('UNTIL=20261231;'.slice(0, -1));
-		expect(buildRecurrence({ kind: 'weekly', weekdays: [1], until: '2026-12-31' }, '2026-11-02', false)!.recurrence[0]).toContain('UNTIL=20261231T235959Z');
+		expect(buildRecurrence({ kind: 'weekly', interval: 1, weekdays: [1], until: '2026-12-31' }, '2026-11-02', true)!.recurrence[0]).toContain('UNTIL=20261231;'.slice(0, -1));
+		expect(buildRecurrence({ kind: 'weekly', interval: 1, weekdays: [1], until: '2026-12-31' }, '2026-11-02', false)!.recurrence[0]).toContain('UNTIL=20261231T235959Z');
 	});
 });
 
@@ -33,20 +33,30 @@ describe('moon', () => {
 	});
 });
 
+describe('every other week', () => {
+	it('writes and reads INTERVAL', () => {
+		const r = { kind: 'weekly', interval: 2, weekdays: [1, 4] } as const;
+		const lines = buildRecurrence(r, '2026-11-02', false)!.recurrence;
+		expect(lines).toEqual(['RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH']);
+		expect(parseRecurrence(lines).repeat).toEqual({ ...r, until: undefined });
+		expect(parseRecurrence(['RRULE:FREQ=WEEKLY;INTERVAL=9;BYDAY=MO']).custom.length).toBe(1);
+	});
+});
+
 describe('parseRecurrence', () => {
 	it('reads back what buildRecurrence writes', () => {
-		const weekly = { kind: 'weekly', weekdays: [1, 3], until: '2026-12-31' } as const;
+		const weekly = { kind: 'weekly', interval: 1, weekdays: [1, 3], until: '2026-12-31' } as const;
 		for (const allDay of [true, false]) {
 			expect(parseRecurrence(buildRecurrence(weekly, '2026-11-02', allDay)!.recurrence).repeat).toEqual(weekly);
 		}
 		const open = parseRecurrence(['RRULE:FREQ=WEEKLY;BYDAY=FR']).repeat;
-		expect(open).toEqual({ kind: 'weekly', weekdays: [5], until: undefined });
+		expect(open).toEqual({ kind: 'weekly', interval: 1, weekdays: [5], until: undefined });
 		const moon = { kind: 'moon', phase: 'FULL_MOON', relation: 'LAST_BEFORE', weekday: 5, until: '2027-06-30' } as const;
 		const lines = buildRecurrence(moon, '2026-11-13', false, '19:00')!.recurrence;
 		expect(parseRecurrence(lines, JSON.stringify(moon)).repeat).toEqual(moon);
 	});
 	it('leaves everything else alone', () => {
-		for (const lines of [['RRULE:FREQ=DAILY'], ['RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO'], ['RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=4'], ['RDATE:20261120T100000Z']]) {
+		for (const lines of [['RRULE:FREQ=DAILY'], ['RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=4'], ['RDATE:20261120T100000Z']]) {
 			expect(parseRecurrence(lines)).toEqual({ custom: lines });
 		}
 		expect(parseRecurrence([])).toEqual({ custom: [] });

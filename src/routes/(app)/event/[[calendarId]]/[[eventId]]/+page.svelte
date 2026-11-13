@@ -137,7 +137,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]] as const;
 	const MOON_LABELS = { NEW_MOON: 'New moon', FIRST_QUARTER: 'First quarter', FULL_MOON: 'Full moon', LAST_QUARTER: 'Last quarter' } as const;
 	const RELATION_LABELS = { EXACT: 'on the day of', LAST_BEFORE: 'last one before', LAST_ON_OR_BEFORE: 'last one on or before', FIRST_AFTER: 'first one after', FIRST_ON_OR_AFTER: 'first one on or after' } as const;
-	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon' | 'keep', days: [1] as number[], until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: 5 });
+	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon' | 'keep', days: [1] as number[], interval: 1, until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: 5 });
 	let rep = $state(newRep());
 	let repBase = $state(JSON.stringify(newRep()));
 	let repeatCustom = $state<string[]>([]);
@@ -146,14 +146,14 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	function repFromEvent(e: EventDetail) {
 		const r = newRep();
 		repeatCustom = e.repeatCustom;
-		if (e.repeat?.kind === 'weekly') Object.assign(r, { kind: 'weekly', days: e.repeat.weekdays, until: e.repeat.until ?? '' });
+		if (e.repeat?.kind === 'weekly') Object.assign(r, { kind: 'weekly', interval: e.repeat.interval, days: e.repeat.weekdays, until: e.repeat.until ?? '' });
 		else if (e.repeat?.kind === 'moon') Object.assign(r, { kind: 'moon', phase: e.repeat.phase, relation: e.repeat.relation, weekday: e.repeat.weekday, until: e.repeat.until });
 		else if (e.repeatCustom.length) r.kind = 'keep';
 		return r;
 	}
 	const repeat = $derived<Repeat | undefined>(
 		JSON.stringify(rep) === repBase ? undefined
-		: rep.kind === 'weekly' ? { kind: 'weekly', weekdays: rep.days, until: rep.until || undefined }
+		: rep.kind === 'weekly' ? { kind: 'weekly', interval: Number(rep.interval), weekdays: rep.days, until: rep.until || undefined }
 		: rep.kind === 'moon' ? { kind: 'moon', phase: rep.phase, relation: rep.relation, weekday: Number(rep.weekday), until: rep.until }
 		: undefined
 	);
@@ -413,6 +413,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 								<p class="text-xs text-muted">Changes the whole series. Edits to single events in it may be reset.</p>
 							{/if}
 							{#if rep.kind === 'weekly'}
+								<Select items={[1, 2, 3, 4].map((value) => ({ value, name: value === 1 ? 'Every week' : `Every ${value} weeks` }))} bind:value={rep.interval} />
 								<div class="flex flex-wrap gap-x-4 gap-y-1">
 									{#each WEEKDAYS as [label, d] (d)}
 										<Checkbox checked={rep.days.includes(d)} onchange={(e) => (rep.days = (e.currentTarget as HTMLInputElement).checked ? [...rep.days, d] : rep.days.filter((x) => x !== d))}>{label}</Checkbox>
