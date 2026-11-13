@@ -9,7 +9,8 @@
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
 import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
-	import { MOON_PHASES, MOON_RELATIONS, moonDates, type Repeat } from '#lib/recurrence';
+	import { MOON_PHASES, MOON_RELATIONS } from '#lib/moon';
+	import { moonDates, type Repeat } from '#lib/recurrence';
 
 	const timeline = getTimeline();
 

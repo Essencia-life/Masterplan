@@ -1,10 +1,8 @@
 import * as z from 'zod';
-import { matchesRelationToLunarPhase, type LunarRelation, type MoonPhase, type Weekday } from './moon';
-import { TIME_ZONE, addDaysIso } from './time';
+import { MOON_PHASES, MOON_RELATIONS, matchesMoonRule, type MoonRule } from './moon';
+import { DAY_MS, TIME_ZONE, addDaysIso } from './time';
 
 /** How a new event repeats. Weekly becomes an RRULE; moon rules have no RRULE, so the dates are listed (RDATE). */
-export const MOON_PHASES = ['NEW_MOON', 'FIRST_QUARTER', 'FULL_MOON', 'LAST_QUARTER'] as const satisfies MoonPhase[];
-export const MOON_RELATIONS = ['EXACT', 'LAST_BEFORE', 'LAST_ON_OR_BEFORE', 'FIRST_AFTER', 'FIRST_ON_OR_AFTER'] as const satisfies LunarRelation[];
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const weekday = z.number().int().min(0).max(6); // 0 = Sunday, like Date.getUTCDay()
 
@@ -20,11 +18,11 @@ const compact = (iso: string) => iso.replaceAll('-', '');
 const dow = (iso: string) => new Date(iso + 'T00:00:00Z').getUTCDay();
 
 /** Days from `from` to `until` (inclusive) on which the moon rule matches. At most about a year ahead. */
-export function moonDates(rule: { phase: MoonPhase; relation: LunarRelation; weekday: number }, from: string, until: string): string[] {
+export function moonDates(rule: MoonRule, from: string, until: string): string[] {
 	const out: string[] = [];
 	const last = [until, addDaysIso(from, MAX_DAYS)].sort()[0];
 	for (let d = from; d <= last; d = addDaysIso(d, 1)) {
-		if (dow(d) === rule.weekday && matchesRelationToLunarPhase(new Date(d + 'T00:00:00Z'), rule as { phase: MoonPhase; relation: LunarRelation; weekday: Weekday })) out.push(d);
+		if (matchesMoonRule(Date.parse(d) / DAY_MS, rule)) out.push(d);
 	}
 	return out;
 }

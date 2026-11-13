@@ -32,8 +32,8 @@ export function exclusiveEndIso(startDate: string, endDate: string, endTime: str
 
 export const clampDay = (i: number) => Math.max(0, Math.min(N_DAYS - 1, i));
 
-const SYNODIC = 29.530588853;
-const REF_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14) / DAY_MS;
+export const SYNODIC = 29.530588853;
+export const REF_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14) / DAY_MS;
 
 /** 0..1 — 0 new moon, 0.5 full moon. Evaluated at local noon of the day. */
 export function moonPhase(day: number) {
