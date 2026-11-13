@@ -9,6 +9,7 @@
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
 import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
+	import { MOON_PHASES, MOON_RELATIONS, moonDates, type Repeat } from '#lib/recurrence';
 
 	const timeline = getTimeline();
 
@@ -102,6 +103,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				jobsScope: 'series'
 			};
 			savedType = '';
+			rep = newRep();
 			jobsBase = JSON.stringify([[], '', 'series']);
 		}
 	});
@@ -125,6 +127,30 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		const all = ids.every((i) => form.resourceIds.includes(i));
 		form.resourceIds = all ? form.resourceIds.filter((x) => !ids.includes(x)) : [...new Set([...form.resourceIds, ...ids])];
 	}
+
+	// ----- repeat (new events only) -----
+	const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]] as const;
+	const MOON_LABELS = { NEW_MOON: 'New moon', FIRST_QUARTER: 'First quarter', FULL_MOON: 'Full moon', LAST_QUARTER: 'Last quarter' } as const;
+	const RELATION_LABELS = { EXACT: 'on the day of', LAST_BEFORE: 'last one before', LAST_ON_OR_BEFORE: 'last one on or before', FIRST_AFTER: 'first one after', FIRST_ON_OR_AFTER: 'first one on or after' } as const;
+	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon', days: [1] as number[], until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: 5 });
+	let rep = $state(newRep());
+	const repeat = $derived<Repeat | undefined>(
+		form.id ? undefined
+		: rep.kind === 'weekly' ? { kind: 'weekly', weekdays: rep.days, until: rep.until || undefined }
+		: rep.kind === 'moon' ? { kind: 'moon', phase: rep.phase, relation: rep.relation, weekday: Number(rep.weekday), until: rep.until }
+		: undefined
+	);
+	const moonPreview = $derived(repeat?.kind === 'moon' && repeat.until && form.start ? moonDates(repeat, form.start, repeat.until) : []);
+	const repeatError = $derived(
+		repeat?.kind === 'weekly' && !repeat.weekdays.length ? 'Pick at least one weekday'
+		: repeat?.kind === 'moon' && !repeat.until ? 'Choose an end date'
+		: repeat?.kind === 'moon' && !moonPreview.length ? 'No matching dates in that period'
+		: null
+	);
+	// moon dates are listed one by one, so they need an end: half a year by default
+	$effect(() => {
+		if (rep.kind === 'moon' && !rep.until && form.start) rep.until = dayToIso(isoToDay(form.start) + 180);
+	});
 
 	// ----- jobs -----
 	const jobsEnabled = $derived.by(() => {
@@ -224,7 +250,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		return null;
 	});
 
-	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError);
+	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !repeatError);
 
 	async function save() {
 		busy = true;
@@ -242,6 +268,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				status: form.status,
 				description: form.description,
 				resourceIds: form.resourceIds,
+				...(repeat ? { repeat } : {}),
 				// only when the Jobs tab was touched, so other edits never rewrite them
 				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined, jobsScope: form.jobsScope } : {})
 			});
@@ -359,6 +386,38 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						<Label for="f-status" class="mb-1">Status</Label>
 						<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />
 					</div>
+					{#if !form.id}
+						<div class="space-y-2">
+							<Label for="f-rep" class="mb-1">Repeat</Label>
+							<Select id="f-rep" items={[{ value: 'none', name: 'Does not repeat' }, { value: 'weekly', name: 'Weekly' }, { value: 'moon', name: 'By moon phase' }]} bind:value={rep.kind} />
+							{#if rep.kind === 'weekly'}
+								<div class="flex flex-wrap gap-x-4 gap-y-1">
+									{#each WEEKDAYS as [label, d] (d)}
+										<Checkbox checked={rep.days.includes(d)} onchange={(e) => (rep.days = (e.currentTarget as HTMLInputElement).checked ? [...rep.days, d] : rep.days.filter((x) => x !== d))}>{label}</Checkbox>
+									{/each}
+								</div>
+								<div>
+									<Label for="f-until" class="mb-1">Until (optional)</Label>
+									<Input id="f-until" type="date" min={form.start} bind:value={rep.until} />
+								</div>
+							{:else if rep.kind === 'moon'}
+								<div class="grid grid-cols-3 gap-2">
+									<Select items={WEEKDAYS.map(([name, value]) => ({ value, name }))} bind:value={rep.weekday} />
+									<Select items={MOON_RELATIONS.map((value) => ({ value, name: RELATION_LABELS[value] }))} bind:value={rep.relation} />
+									<Select items={MOON_PHASES.map((value) => ({ value, name: MOON_LABELS[value] }))} bind:value={rep.phase} />
+								</div>
+								<div>
+									<Label for="f-until" class="mb-1">Until</Label>
+									<Input id="f-until" type="date" min={form.start} bind:value={rep.until} />
+								</div>
+								<p class="text-xs text-muted">
+									{#if moonPreview.length}{moonPreview.length} dates, from {moonPreview.slice(0, 4).join(', ')}{moonPreview.length > 4 ? ' …' : ''}. The event starts on the first one; add more later by creating a new series.{:else}No dates in that period.{/if}
+								</p>
+							{/if}
+							{#if repeatError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{repeatError}</p>{/if}
+						</div>
+					{/if}
+
 					<div>
 						<Label for="f-desc" class="mb-1">Notes</Label>
 						<Textarea id="f-desc" class="w-full" rows={4} bind:value={form.description} />

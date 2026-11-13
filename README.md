@@ -15,6 +15,7 @@ SvelteKit 3 (Svelte 5 runes, remote functions), Tailwind CSS 4, flowbite-svelte,
 - Bars show a warning badge when a room declined the booking and a note badge when the event has a description.
 - Declined room bookings are hidden in the room calendars.
 - **Jobs**: events in Community, Events and Retreat calendars can carry jobs (title, slots, "ask for details", "call for help if empty") that people sign up for in the Telegram week plan. Configured in the panel's **Jobs** tab, for a whole series or a single event.
+- **Repeat** (new events): weekly (an RRULE, optionally until a date) or by moon phase, e.g. "last Friday before the full moon". Moon dates are listed one by one (RDATE) for up to about a year, since Google has no rule for them; the phase times are an approximation (mean synodic month, ported from the Telegram bot).
 
 ## Access model
 

@@ -19,7 +19,8 @@ import {
 	resolveOrganizer,
 	serviceCalendar
 } from '#lib/server/google';
-import { TIME_ZONE } from '#lib/time';
+import { DAY_MS, TIME_ZONE, addDaysIso } from '#lib/time';
+import { buildRecurrence, repeatSchema } from '#lib/recurrence';
 import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -105,7 +106,9 @@ const saveSchema = z.object({
 	jobs: jobsSchema.optional(),
 	type: typeSchema.optional(),
 	/** for an event of a series: write the jobs to the whole series or only to this event */
-	jobsScope: z.enum(['series', 'instance']).default('series')
+	jobsScope: z.enum(['series', 'instance']).default('series'),
+	/** new events only: repeat weekly (RRULE) or on moon dates (RDATE list) */
+	repeat: repeatSchema.optional()
 });
 
 async function calendarSupportsJobs(rowId: string) {
@@ -123,7 +126,18 @@ export const saveEvent = command(saveSchema, async (input) => {
 	for (const r of input.resourceIds) if (!resourceIds.has(r)) error(400, 'Unknown resource');
 	const calendarId = await resolveCalendarId(input.calendar);
 	await assertCanWrite(calendarId);
+	let recurrence: string[] | undefined;
+	if (input.repeat) {
+		if (input.id) error(400, 'Repeating can only be set when creating an event');
+		const r = buildRecurrence(input.repeat, input.start, input.allDay, input.startTime);
+		if (!r) error(400, 'The repeat rule has no dates in that period');
+		// the event itself becomes the first occurrence of the rule
+		input.end = addDaysIso(input.end, Math.round((Date.parse(r.start) - Date.parse(input.start)) / DAY_MS));
+		input.start = r.start;
+		recurrence = r.recurrence;
+	}
 	const requestBody: calendar_v3.Schema$Event = {
+		...(recurrence?.length ? { recurrence } : {}),
 		summary: input.title,
 		description: input.description,
 		status: input.status,
