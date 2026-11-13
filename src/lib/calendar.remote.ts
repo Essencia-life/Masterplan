@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { command, query } from '$app/server';
 import * as z from 'zod';
+import type { calendar_v3 } from 'googleapis';
 import type { EventDetail } from '#lib/types';
 import {
 	asUser,
@@ -19,6 +20,7 @@ import {
 	serviceCalendar
 } from '#lib/server/google';
 import { TIME_ZONE } from '#lib/time';
+import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -74,7 +76,10 @@ export const getEvent = query(
 					allDay,
 					startTime: allDay ? '' : localTime(ev.start!.dateTime!),
 					endTime: allDay ? '' : localTime(ev.end!.dateTime!),
-					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!)
+					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!),
+					jobs: parseJobs(ev.extendedProperties?.private?.jobs),
+					type: ev.extendedProperties?.private?.type ?? '',
+					seriesId: ev.recurringEventId ?? (ev.recurrence?.length ? ev.id! : '')
 				};
 			} catch {
 				// not in this calendar, try the next
@@ -95,8 +100,19 @@ const saveSchema = z.object({
 	allDay: z.boolean().default(true),
 	startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
 	endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-	resourceIds: z.array(z.string()).max(40).default([])
+	resourceIds: z.array(z.string()).max(40).default([]),
+	/** undefined = leave the jobs untouched, [] = remove them */
+	jobs: jobsSchema.optional(),
+	type: typeSchema.optional(),
+	/** for an event of a series: write the jobs to the whole series or only to this event */
+	jobsScope: z.enum(['series', 'instance']).default('series')
 });
+
+async function calendarSupportsJobs(rowId: string) {
+	const { meta } = await loadMeta();
+	const row = meta.rows.find((r) => r.id === rowId);
+	return !!row && supportsJobs(meta.groups.find((g) => g.id === row.groupId)?.label ?? '', row.label);
+}
 
 export const saveEvent = command(saveSchema, async (input) => {
 	if (input.allDay ? input.end <= input.start : input.end < input.start) error(400, 'End must be after start');
@@ -107,7 +123,7 @@ export const saveEvent = command(saveSchema, async (input) => {
 	for (const r of input.resourceIds) if (!resourceIds.has(r)) error(400, 'Unknown resource');
 	const calendarId = await resolveCalendarId(input.calendar);
 	await assertCanWrite(calendarId);
-	const requestBody = {
+	const requestBody: calendar_v3.Schema$Event = {
 		summary: input.title,
 		description: input.description,
 		status: input.status,
@@ -117,12 +133,26 @@ export const saveEvent = command(saveSchema, async (input) => {
 	};
 	// rows/dates of the previous state also change (rooms released, event moved)
 	const before = input.id ? (await serviceCalendar().events.get({ calendarId, eventId: input.id })).data : null;
+	// jobs live in private extended properties; null removes a property in a patch
+	let series: { id: string; props: Record<string, string> } | undefined;
+	if (input.jobs) {
+		if (!(await calendarSupportsJobs(input.calendar))) error(400, 'Jobs are not available in this calendar');
+		if (isLegacyJobs(before?.extendedProperties?.private?.jobs)) error(409, 'This event still has sign-ups in the bot\'s older format, its jobs cannot be edited here yet');
+		const props = input.jobs.length
+			? { jobs: JSON.stringify(input.jobs), type: input.type || slugify(input.title) || 'event' }
+			: { jobs: null as unknown as string, type: null as unknown as string };
+		const master = before?.recurringEventId ?? (before?.recurrence?.length ? before.id : undefined);
+		if (input.jobsScope === 'series' && master && master !== input.id) series = { id: master, props };
+		else requestBody.extendedProperties = { private: props };
+	}
 	// written as the signed-in user, so Google's calendar sharing decides what is allowed
 	const res = await asUser((api) =>
 		input.id
 			? api.events.patch({ calendarId, eventId: input.id, requestBody, sendUpdates: 'none' })
 			: api.events.insert({ calendarId, requestBody, sendUpdates: 'none' })
 	);
+	// a series keeps its jobs on the master event; the instances inherit them
+	if (series) await asUser((api) => api.events.patch({ calendarId, eventId: series!.id, requestBody: { extendedProperties: { private: series!.props } }, sendUpdates: 'none' }));
 	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
 	const [oldStart, oldEnd] = before ? eventRange(before) : [input.start, input.end];
 	const fresh = await freshRows(

@@ -8,6 +8,7 @@
 	import { getTimeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
+import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
 
 	const timeline = getTimeline();
 
@@ -42,9 +43,17 @@
 		allDay: true,
 		startTime: '09:00',
 		endTime: '10:00',
-		resourceIds: [] as string[]
+		resourceIds: [] as string[],
+		jobs: [] as Job[],
+		type: '',
+		seriesId: '',
+		jobsScope: 'series' as 'series' | 'instance'
 	});
-	let tab = $state<'details' | 'resources' | 'conflicts'>('details');
+	/** event key as stored on the event: fixed once set, sign-ups are stored under it */
+	let savedType = $state('');
+	/** jobs/key/scope as loaded, to tell whether the Jobs tab was touched */
+	let jobsBase = $state(JSON.stringify([[], '', 'series']));
+	let tab = $state<'details' | 'resources' | 'jobs' | 'conflicts'>('details');
 	let resolving = $state<string | null>(null);
 	let moveTo = $state<Record<string, string>>({});
 	let busy = $state(false);
@@ -63,7 +72,9 @@
 			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
 					if (id !== eventId) return; // another booking was opened meanwhile
-					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds };
+					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId, jobsScope: 'series' };
+					savedType = e.type;
+					jobsBase = JSON.stringify([e.jobs, e.type, 'series']);
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
 				.finally(() => id === eventId && (loading = false));
@@ -84,8 +95,14 @@
 				allDay: true,
 				startTime: '09:00',
 				endTime: '10:00',
-				resourceIds: row && !isMain ? [row] : []
+				resourceIds: row && !isMain ? [row] : [],
+				jobs: [],
+				type: '',
+				seriesId: '',
+				jobsScope: 'series'
 			};
+			savedType = '';
+			jobsBase = JSON.stringify([[], '', 'series']);
 		}
 	});
 
@@ -108,6 +125,16 @@
 		const all = ids.every((i) => form.resourceIds.includes(i));
 		form.resourceIds = all ? form.resourceIds.filter((x) => !ids.includes(x)) : [...new Set([...form.resourceIds, ...ids])];
 	}
+
+	// ----- jobs -----
+	const jobsEnabled = $derived.by(() => {
+		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
+		return !!r && supportsJobs(groupLabel(r.groupId), r.label);
+	});
+	const jobsError = $derived(jobsEnabled ? jobsProblem(form.jobs, form.type) : null);
+	const jobsDirty = $derived(JSON.stringify([form.jobs, form.type, form.jobsScope]) !== jobsBase);
+	/** an instance of a series: the jobs go to the whole series or to this event only */
+	const inSeries = $derived(!!form.seriesId && form.seriesId !== form.id);
 
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
@@ -197,7 +224,7 @@
 		return null;
 	});
 
-	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start);
+	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError);
 
 	async function save() {
 		busy = true;
@@ -214,7 +241,9 @@
 				endTime: form.allDay ? undefined : form.endTime,
 				status: form.status,
 				description: form.description,
-				resourceIds: form.resourceIds
+				resourceIds: form.resourceIds,
+				// only when the Jobs tab was touched, so other edits never rewrite them
+				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined, jobsScope: form.jobsScope } : {})
 			});
 			timeline.applyFresh(res.fresh);
 			// no conflicts: show the room bookings right away as tentative, Google mirrors them a moment later
@@ -352,6 +381,43 @@
 						<p class="text-sm text-muted">No resource calendars found. Subscribe the service account's user to them first.</p>
 					{/each}
 			</TabItem>
+			{#if jobsEnabled}
+				<TabItem key="jobs" title="Jobs ({form.jobs.length})">
+					<p class="text-sm text-muted">People sign up for these jobs in the Telegram week plan.</p>
+					{#if inSeries}
+						<div>
+							<Label for="f-jscope" class="mb-1">Applies to</Label>
+							<Select id="f-jscope" items={[{ value: 'series', name: 'All events of the series' }, { value: 'instance', name: 'Only this event' }]} bind:value={form.jobsScope} />
+						</div>
+					{/if}
+					{#each form.jobs as job, i (i)}
+						<div class="space-y-2 rounded-lg border border-line p-3">
+							<div class="flex items-center gap-2">
+								<Input class="flex-1" placeholder="e.g. Lunch chef" aria-label="Job title" bind:value={job.title} />
+								<Button size="xs" color="alternative" onclick={() => form.jobs.splice(i, 1)}>Remove</Button>
+							</div>
+							<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+								<label class="flex items-center gap-2 text-sm">
+									Slots
+									<input type="number" min="1" max="20" class="w-16 rounded-lg border border-line bg-surface p-1.5 text-sm text-ink" bind:value={job.slots} />
+								</label>
+								<Checkbox bind:checked={job.askDetails} disabled={job.slots !== 1}>Ask for details</Checkbox>
+								<Checkbox bind:checked={job.sos}>Call for help if empty</Checkbox>
+								{#if job.key}<span class="ml-auto text-xs text-muted">{job.key}</span>{/if}
+							</div>
+						</div>
+					{/each}
+					<Button size="xs" color="alternative" onclick={() => form.jobs.push(newJob())}>Add job</Button>
+					{#if form.jobs.length}
+						<div>
+							<Label for="f-type" class="mb-1">Event key</Label>
+							<Input id="f-type" bind:value={form.type} placeholder={slugify(form.title) || 'event'} disabled={!!savedType} />
+							<p class="mt-1 text-xs text-muted">Stable name of this kind of event; sign-ups are stored under it. Chosen once, do not change it afterwards.</p>
+						</div>
+					{/if}
+					{#if jobsError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{jobsError}</p>{/if}
+				</TabItem>
+			{/if}
 			{#if conflicts.length}
 				<TabItem key="conflicts" title="Conflicts ({conflicts.length})">
 						<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>

@@ -14,6 +14,7 @@ SvelteKit 3 (Svelte 5 runes, remote functions), Tailwind CSS 4, flowbite-svelte,
 - Warnings (not blocks): double-booked rooms, less than one free day between retreats.
 - Bars show a warning badge when a room declined the booking and a note badge when the event has a description.
 - Declined room bookings are hidden in the room calendars.
+- **Jobs**: events in Community, Events and Retreat calendars can carry jobs (title, slots, "ask for details", "call for help if empty") that people sign up for in the Telegram week plan. Configured in the panel's **Jobs** tab, for a whole series or a single event.
 
 ## Access model
 
@@ -29,6 +30,19 @@ Hybrid authentication:
 - Write permission per calendar comes from the user's own Google calendar list (`owner` or `writer`). Shared calendars must be in that user's list, otherwise they are read-only for them.
 - Sign-in is limited to the Workspace domain (`ALLOWED_DOMAIN`, checked on the verified ID token: `hd` and `email_verified`).
 - Session: AES-256-GCM encrypted httpOnly cookie (`SESSION_SECRET`), 30 days. The refresh token never reaches the browser.
+
+## Jobs (Telegram week plan)
+
+Calendars whose group or name contains `community`, `event` or `retreat` (`JOB_CALENDARS` in `src/lib/jobs.ts`) get a **Jobs** tab in the booking panel. The configuration is stored on the Google event as two private extended properties:
+
+| Property | Content |
+| --- | --- |
+| `jobs` | JSON array of `{ key, title, slots, askDetails, sos }`. `key` is derived from the title when a job is created and never changes (lowercase letters and digits). `askDetails` needs `slots` = 1. `sos`: the daily agenda calls for help while the job is empty. |
+| `type` | stable key of this kind of event, a slug of the title set once (e.g. `lunch`). Sign-ups are stored under it, so do not change it. |
+
+- For an event of a series the properties go to the series master and the instances inherit them. "Only this event" writes them on the instance. Saving jobs for the whole series later overwrites such exceptions.
+- Sign-ups are not stored in Google Calendar, only the job definitions are. They are written by the bot.
+- Events that still carry the bot's older object-shaped `jobs` value show no jobs and cannot be saved with jobs here (409).
 
 ## Setup
 
@@ -95,6 +109,7 @@ npm run build
 | --- | --- |
 | `src/routes/(app)/+layout.svelte` | timeline: virtual window, rows, lanes, selection gestures, group reordering |
 | `src/routes/(app)/event/[[calendarId]]/[[eventId]]/+page.svelte` | booking panel and conflict handling |
+| `src/lib/jobs.ts` | jobs schema (zod), key/slug helpers, which calendars support jobs (unit tested) |
 | `src/lib/calendar.remote.ts` | remote functions (zod): `getEvents`, `getEvent`, `saveEvent`, `deleteEvent`, `resolveConflict`, `refreshRows` |
 | `src/lib/server/google.ts` | Google clients, row model (calendar list), event reads, auth helpers (service account vs. user) |
 | `src/lib/server/parse.ts` | pure functions: calendar/room name schemes, time zone helpers, event normalisation (unit tested) |

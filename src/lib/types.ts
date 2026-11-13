@@ -1,3 +1,5 @@
+import type { Job } from '#lib/jobs';
+
 export type RowInfo = {
 	/** Google calendar id */
 	id: string;
@@ -49,4 +51,10 @@ export type EventDetail = {
 	startTime: string;
 	endTime: string;
 	resourceIds: string[];
+	/** jobs people can sign up for (Telegram week plan); empty when none or the calendar has none */
+	jobs: Job[];
+	/** stable key of this kind of event, e.g. "lunch" (part of the sign-up storage key) */
+	type: string;
+	/** master event of a series, '' for single events; set for instances and for the master itself */
+	seriesId: string;
 };
