@@ -76,8 +76,9 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					if (id !== eventId) return; // another booking was opened meanwhile
 					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId, jobsScope: 'series' };
 					savedType = e.type;
-					rep = repFromEvent(e);
-					repBase = JSON.stringify(rep);
+					const loaded = repFromEvent(e);
+					rep = loaded;
+					repBase = JSON.stringify(loaded);
 					jobsBase = JSON.stringify([e.jobs, e.type, 'series']);
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
@@ -106,8 +107,10 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				jobsScope: 'series'
 			};
 			savedType = '';
-			rep = newRep();
-			repBase = JSON.stringify(rep);
+			// not read back from `rep`: this effect would depend on the state it writes
+			const fresh = newRep();
+			rep = fresh;
+			repBase = JSON.stringify(fresh);
 			repeatCustom = [];
 			jobsBase = JSON.stringify([[], '', 'series']);
 		}
