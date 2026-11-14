@@ -49,13 +49,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		resourceIds: [] as string[],
 		jobs: [] as Job[],
 		type: '',
-		seriesId: '',
-		jobsScope: 'series' as 'series' | 'instance'
+		seriesId: ''
 	});
 	/** event key as stored on the event: fixed once set, sign-ups are stored under it */
 	let savedType = $state('');
 	/** jobs/key/scope as loaded, to tell whether the Jobs tab was touched */
-	let jobsBase = $state(JSON.stringify([[], '', 'series']));
+	let jobsBase = $state(JSON.stringify([[], '']));
 	let tab = $state<'details' | 'resources' | 'jobs' | 'conflicts'>('details');
 	let resolving = $state<string | null>(null);
 	let moveTo = $state<Record<string, string>>({});
@@ -80,13 +79,13 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
 					if (id !== eventId) return; // another booking was opened meanwhile
-					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId, jobsScope: 'series' };
+					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId };
 					savedType = e.type;
 					const loaded = repFromEvent(e);
 					rep = loaded;
 					savedStart = e.start;
 					repBase = JSON.stringify(loaded);
-					jobsBase = JSON.stringify([e.jobs, e.type, 'series']);
+					jobsBase = JSON.stringify([e.jobs, e.type]);
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
 				.finally(() => id === eventId && (loading = false));
@@ -110,8 +109,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				resourceIds: row && !isMain ? [row] : [],
 				jobs: [],
 				type: '',
-				seriesId: '',
-				jobsScope: 'series'
+				seriesId: ''
 			};
 			savedType = '';
 			// not read back from `rep`: this effect would depend on the state it writes
@@ -119,7 +117,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			rep = fresh;
 			repBase = JSON.stringify(fresh);
 			repeatCustom = [];
-			jobsBase = JSON.stringify([[], '', 'series']);
+			jobsBase = JSON.stringify([[], '']);
 		}
 	});
 
@@ -190,9 +188,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		return !!r && supportsJobs(groupLabel(r.groupId), r.label);
 	});
 	const jobsError = $derived(jobsEnabled ? jobsProblem(form.jobs, form.type) : null);
-	const jobsDirty = $derived(JSON.stringify([form.jobs, form.type, form.jobsScope]) !== jobsBase);
-	/** an instance of a series: the jobs go to the whole series or to this event only */
-	const inSeries = $derived(!!form.seriesId && form.seriesId !== form.id);
+	const jobsDirty = $derived(JSON.stringify([form.jobs, form.type]) !== jobsBase);
 
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
@@ -284,7 +280,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 
 	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !repeatError);
 
-	async function save(scope: 'this' | 'following' | 'all' = repeat ? 'all' : 'this') {
+	// jobs and repeat describe the series, so they are saved for all events unless chosen otherwise
+	async function save(scope: 'this' | 'following' | 'all' = repeat || (jobsEnabled && jobsDirty) ? 'all' : 'this') {
 		busy = true;
 		saveError = null;
 		try {
@@ -303,7 +300,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				scope,
 				...(repeat ? { repeat } : {}),
 				// only when the Jobs tab was touched, so other edits never rewrite them
-				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined, jobsScope: form.jobsScope } : {})
+				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined } : {})
 			});
 			timeline.applyFresh(res.fresh);
 			// no conflicts: show the room bookings right away as tentative, Google mirrors them a moment later
@@ -482,12 +479,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			{#if jobsEnabled}
 				<TabItem key="jobs" title="Jobs ({form.jobs.length})">
 					<p class="text-sm text-muted">People sign up for these jobs in the Telegram week plan.</p>
-					{#if inSeries}
-						<div>
-							<Label for="f-jscope" class="mb-1">Applies to</Label>
-							<Select id="f-jscope" items={[{ value: 'series', name: 'All events of the series' }, { value: 'instance', name: 'Only this event' }]} bind:value={form.jobsScope} />
-						</div>
-					{/if}
+					{#if form.seriesId}<p class="text-xs text-muted">Save saves the jobs for all events of the series; the arrow next to Save has the other options.</p>{/if}
 					{#each form.jobs as job, i (i)}
 						<div class="space-y-2 rounded-lg border border-line p-3">
 							<div class="flex items-center gap-2">

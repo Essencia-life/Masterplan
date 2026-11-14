@@ -110,8 +110,6 @@ const saveSchema = z.object({
 	/** undefined = leave the jobs untouched, [] = remove them */
 	jobs: jobsSchema.optional(),
 	type: typeSchema.optional(),
-	/** for an event of a series: write the jobs to the whole series or only to this event */
-	jobsScope: z.enum(['series', 'instance']).default('series'),
 	/** new events only: repeat weekly (RRULE) or on moon dates (RDATE list) */
 	repeat: repeatSchema.optional(),
 	/** for an event of a series: only this event, this and all following ones, or the whole series */
@@ -168,11 +166,8 @@ export const saveEvent = command(saveSchema, async (input) => {
 			requestBody.end = input.allDay ? { date: endDay } : { dateTime: `${endDay}T${input.endTime}:00`, timeZone: TIME_ZONE };
 		}
 	}
-	// what goes to the series master (the instances inherit it); private properties: null removes one in a patch
-	const forMaster: calendar_v3.Schema$Event = {};
+	// private properties: null removes one in a patch
 	const props: Record<string, string | null> = {};
-	const masterProps: Record<string, string | null> = {};
-	const ownProps = masterId && masterId !== patchId ? masterProps : props;
 	let lastDay = input.end;
 	let firstDay = input.start;
 	if (input.jobs) {
@@ -181,7 +176,7 @@ export const saveEvent = command(saveSchema, async (input) => {
 		const jobProps = input.jobs.length
 			? { jobs: JSON.stringify(input.jobs), type: input.type || slugify(input.title) || 'event' }
 			: { jobs: null, type: null };
-		Object.assign(input.jobsScope === 'series' ? ownProps : props, jobProps);
+		Object.assign(props, jobProps);
 	}
 	if (input.repeat) {
 		// the series' first event: the master, or this event (a new series, or a single event becoming one)
@@ -191,16 +186,15 @@ export const saveEvent = command(saveSchema, async (input) => {
 		const r = buildRecurrence(input.repeat, from, allDay, m ? (allDay ? undefined : localTime(m.start!.dateTime!)) : input.startTime);
 		if (!r) error(400, 'The repeat rule has no dates in that period');
 		const delta = Math.round((Date.parse(r.start) - Date.parse(from)) / DAY_MS);
-		const target = masterId && masterId !== patchId ? forMaster : requestBody;
-		target.recurrence = r.recurrence;
-		(target === forMaster ? masterProps : props).repeat = input.repeat.kind === 'moon' ? JSON.stringify(input.repeat) : null;
+		requestBody.recurrence = r.recurrence;
+		props.repeat = input.repeat.kind === 'moon' ? JSON.stringify(input.repeat) : null;
 		if (delta) {
 			// the first date moves; instance ids change with it
 			const shift = (t: calendar_v3.Schema$EventDateTime): calendar_v3.Schema$EventDateTime =>
 				t.date ? { date: addDaysIso(t.date, delta) } : { dateTime: `${addDaysIso(localDay(t.dateTime), delta)}T${localTime(t.dateTime!)}:00`, timeZone: TIME_ZONE };
 			const base = m ?? { start: requestBody.start, end: requestBody.end };
-			target.start = shift(base.start!);
-			target.end = shift(base.end!);
+			requestBody.start = shift(base.start!);
+			requestBody.end = shift(base.end!);
 		}
 		firstDay = [firstDay, from].sort()[0];
 		lastDay = [lastDay, input.repeat.until ?? addDaysIso(from, 400)].sort().at(-1)!;
@@ -208,7 +202,6 @@ export const saveEvent = command(saveSchema, async (input) => {
 	// "remove this property" (null) only means something when patching
 	if (!input.id) for (const k of Object.keys(props)) if (props[k] === null) delete props[k];
 	if (Object.keys(props).length) requestBody.extendedProperties = { private: props as Record<string, string> };
-	if (Object.keys(masterProps).length) forMaster.extendedProperties = { private: masterProps as Record<string, string> };
 	// written as the signed-in user, so Google's calendar sharing decides what is allowed
 	let res: { data: calendar_v3.Schema$Event };
 	if (splitting) {
@@ -216,7 +209,7 @@ export const saveEvent = command(saveSchema, async (input) => {
 		const lines = linesFrom(master!.recurrence ?? [], day, input.allDay ? undefined : `${input.startTime!.replace(':', '')}00`);
 		if (!lines) error(400, 'A series with a fixed number of events cannot be split here');
 		const kept = { ...master!.extendedProperties?.private };
-		for (const [k, v] of Object.entries({ ...masterProps, ...props })) if (v === null) delete kept[k]; else kept[k] = v;
+		for (const [k, v] of Object.entries(props)) if (v === null) delete kept[k]; else kept[k] = v;
 		const body = { ...requestBody, recurrence: lines, extendedProperties: { private: kept } };
 		res = await asUser((api) => api.events.insert({ calendarId, requestBody: body, sendUpdates: 'none' }));
 		try {
@@ -232,7 +225,6 @@ export const saveEvent = command(saveSchema, async (input) => {
 				: api.events.insert({ calendarId, requestBody, sendUpdates: 'none' })
 		);
 	}
-	if (Object.keys(forMaster).length && !splitting) await asUser((api) => api.events.patch({ calendarId, eventId: masterId!, requestBody: forMaster, sendUpdates: 'none' }));
 	const oldRooms = (before?.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
 	const [oldStart, oldEnd] = before ? eventRange(before) : [input.start, input.end];
 	if (master) {
