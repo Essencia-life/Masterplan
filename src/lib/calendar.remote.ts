@@ -179,6 +179,8 @@ export const saveEvent = command(saveSchema, async (input) => {
 		firstDay = [firstDay, from].sort()[0];
 		lastDay = [lastDay, input.repeat.until ?? addDaysIso(from, 400)].sort().at(-1)!;
 	}
+	// "remove this property" (null) only means something when patching
+	if (!input.id) for (const k of Object.keys(props)) if (props[k] === null) delete props[k];
 	if (Object.keys(props).length) requestBody.extendedProperties = { private: props as Record<string, string> };
 	if (Object.keys(masterProps).length) forMaster.extendedProperties = { private: masterProps as Record<string, string> };
 	// written as the signed-in user, so Google's calendar sharing decides what is allowed
