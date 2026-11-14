@@ -65,6 +65,9 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	let loading = $state(false);
 	let saveError = $state<string | null>(null);
 	let scopeOpen = $state(false);
+	/** first day when the event was opened: "following" and "all" cannot move it */
+	let savedStart = $state('');
+	const dayChanged = $derived(!!form.id && !!savedStart && form.start !== savedStart);
 
 	// (re)initialise whenever the route changes
 	$effect(() => {
@@ -80,6 +83,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					savedType = e.type;
 					const loaded = repFromEvent(e);
 					rep = loaded;
+					savedStart = e.start;
 					repBase = JSON.stringify(loaded);
 					jobsBase = JSON.stringify([e.jobs, e.type, 'series']);
 				})
@@ -166,6 +170,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	const repeatError = $derived(
 		repeat?.kind === 'weekly' && !repeat.weekdays.length ? 'Pick at least one weekday'
 		: repeat?.kind === 'moon' && !repeat.until ? 'Choose an end date'
+		: repeat && dayChanged ? 'The repeat cannot be changed together with the day: save the day for this event first'
 		: repeat?.kind === 'moon' && !moonPreview.length ? 'No matching dates in that period'
 		: null
 	);
@@ -548,9 +553,10 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			<Button size="sm" id="save-scope" aria-label="More ways to save" disabled={!valid || loading || busy}><ChevronDown size={16} /></Button>
 		</ButtonGroup>
 		<Dropdown triggeredBy="#save-scope" simple placement="top-end" bind:isOpen={scopeOpen}>
+			{#if dayChanged}<p class="max-w-56 px-4 py-2 text-xs text-muted">The day changed, so this can only be saved for this event.</p>{/if}
 			<DropdownItem class="whitespace-nowrap" disabled={!!repeat} onclick={() => { scopeOpen = false; void save('this'); }}>Save only this event</DropdownItem>
-			<DropdownItem class="whitespace-nowrap" disabled={!!repeat} onclick={() => { scopeOpen = false; void save('following'); }}>Save this and following events</DropdownItem>
-			<DropdownItem class="whitespace-nowrap" onclick={() => { scopeOpen = false; void save('all'); }}>Save all events of the series</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" disabled={!!repeat || dayChanged} onclick={() => { scopeOpen = false; void save('following'); }}>Save this and following events</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" disabled={dayChanged} onclick={() => { scopeOpen = false; void save('all'); }}>Save all events of the series</DropdownItem>
 		</Dropdown>
 	{:else}
 		<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
