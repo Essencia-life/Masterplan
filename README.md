@@ -16,6 +16,7 @@ SvelteKit 3 (Svelte 5 runes, remote functions), Tailwind CSS 4, flowbite-svelte,
 - Declined room bookings are hidden in the room calendars.
 - **Jobs**: events in Community, Events and Retreat calendars can carry jobs (title, slots, "ask for details", "call for help if empty") that people sign up for in the Telegram week plan. Configured in the panel's **Jobs** tab, for a whole series or a single event.
 - **Saving a series event**: the arrow next to Save offers only this event (default), this and following events (the series is split: the old one ends the day before, a new one starts with this event) or all events. For the last two the day of the event cannot change; only times, length, title, rooms and jobs.
+- **Deleting a series event**: the arrow next to Delete offers only this event, this and following events (the series ends the day before) or all events.
 - **Repeat**: for new events, single events and series created here (changing it applies to the whole series and can reset edits to single events in it). Other recurrence rules (every 2 weeks, daily, …) are shown as custom and stay untouched. Options: weekly (an RRULE, optionally until a date) or by moon phase, e.g. "last Friday before the full moon". Moon dates are listed one by one (RDATE) for up to about a year, since Google has no rule for them; the phase times are an approximation (mean synodic month, the same model as the moons in the timeline).
 
 ## Access model

@@ -65,6 +65,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	let loading = $state(false);
 	let saveError = $state<string | null>(null);
 	let scopeOpen = $state(false);
+	let deleteOpen = $state(false);
 	/** first day when the event was opened: "following" and "all" cannot move it */
 	let savedStart = $state('');
 	const dayChanged = $derived(!!form.id && !!savedStart && form.start !== savedStart);
@@ -146,8 +147,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]] as const;
 	const MOON_LABELS = { NEW_MOON: 'New moon', FIRST_QUARTER: 'First quarter', FULL_MOON: 'Full moon', LAST_QUARTER: 'Last quarter' } as const;
 	const RELATION_LABELS = { EXACT: 'on the day of', LAST_BEFORE: 'last one before', LAST_ON_OR_BEFORE: 'last one on or before', FIRST_AFTER: 'first one after', FIRST_ON_OR_AFTER: 'first one on or after' } as const;
-	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon' | 'keep', days: [1] as number[], interval: 1, until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: 5 });
+	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon' | 'keep', days: null as number[] | null, interval: 1, until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: null as number | null });
 	let rep = $state(newRep());
+	const startWeekday = $derived(form.start ? new Date(form.start + 'T00:00:00Z').getUTCDay() : 1);
+	/** until chosen otherwise, the repeat falls on the weekday of the start date */
+	const repDays = $derived(rep.days ?? [startWeekday]);
+	const repWeekday = $derived(rep.weekday ?? startWeekday);
 	let repBase = $state(JSON.stringify(newRep()));
 	let repeatCustom = $state<string[]>([]);
 	const inSeriesNow = $derived(!!form.seriesId);
@@ -162,8 +167,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	}
 	const repeat = $derived<Repeat | undefined>(
 		JSON.stringify(rep) === repBase ? undefined
-		: rep.kind === 'weekly' ? { kind: 'weekly', interval: Number(rep.interval), weekdays: rep.days, until: rep.until || undefined }
-		: rep.kind === 'moon' ? { kind: 'moon', phase: rep.phase, relation: rep.relation, weekday: Number(rep.weekday), until: rep.until }
+		: rep.kind === 'weekly' ? { kind: 'weekly', interval: Number(rep.interval), weekdays: repDays, until: rep.until || undefined }
+		: rep.kind === 'moon' ? { kind: 'moon', phase: rep.phase, relation: rep.relation, weekday: Number(repWeekday), until: rep.until }
 		: undefined
 	);
 	const moonPreview = $derived(repeat?.kind === 'moon' && repeat.until && form.start ? moonDates(repeat, form.start, repeat.until) : []);
@@ -327,11 +332,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			busy = false;
 		}
 	}
-	async function remove() {
-		if (!form.id || !confirm('Delete this booking?')) return;
+	async function remove(scope: 'this' | 'following' | 'all' = 'this') {
+		const what = { this: 'Delete this booking?', following: 'Delete this and all following events of the series?', all: 'Delete all events of the series?' }[scope];
+		if (!form.id || !confirm(what)) return;
 		busy = true;
 		try {
-			const res = await deleteEvent({ calendar: form.calendar, id: form.id });
+			const res = await deleteEvent({ calendar: form.calendar, id: form.id, scope });
 			timeline.applyFresh(res.fresh);
 			await close();
 		} catch (e) {
@@ -427,7 +433,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 								<Select items={[1, 2, 3, 4].map((value) => ({ value, name: value === 1 ? 'Every week' : `Every ${value} weeks` }))} bind:value={rep.interval} />
 								<div class="flex flex-wrap gap-x-4 gap-y-1">
 									{#each WEEKDAYS as [label, d] (d)}
-										<Checkbox checked={rep.days.includes(d)} onchange={(e) => (rep.days = (e.currentTarget as HTMLInputElement).checked ? [...rep.days, d] : rep.days.filter((x) => x !== d))}>{label}</Checkbox>
+										<Checkbox checked={repDays.includes(d)} onchange={(e) => (rep.days = (e.currentTarget as HTMLInputElement).checked ? [...repDays, d] : repDays.filter((x) => x !== d))}>{label}</Checkbox>
 									{/each}
 								</div>
 								<div>
@@ -436,7 +442,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 								</div>
 							{:else if rep.kind === 'moon'}
 								<div class="grid grid-cols-3 gap-2">
-									<Select items={WEEKDAYS.map(([name, value]) => ({ value, name }))} bind:value={rep.weekday} />
+									<Select items={WEEKDAYS.map(([name, value]) => ({ value, name }))} value={repWeekday} onchange={(e) => (rep.weekday = Number((e.currentTarget as HTMLSelectElement).value))} />
 									<Select items={MOON_RELATIONS.map((value) => ({ value, name: RELATION_LABELS[value] }))} bind:value={rep.relation} />
 									<Select items={MOON_PHASES.map((value) => ({ value, name: MOON_LABELS[value] }))} bind:value={rep.phase} />
 								</div>
@@ -545,7 +551,17 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 </div>
 
 <div class="flex items-center gap-2 border-t border-line p-3">
-	{#if form.id}<Button color="red" outline size="sm" onclick={remove} disabled={busy || loading}>Delete</Button>{/if}
+	{#if form.id && inSeriesNow}
+		<ButtonGroup size="sm">
+			<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>
+			<Button color="red" outline size="sm" id="delete-scope" aria-label="More ways to delete" disabled={busy || loading}><ChevronDown size={16} /></Button>
+		</ButtonGroup>
+		<Dropdown triggeredBy="#delete-scope" simple placement="top-start" bind:isOpen={deleteOpen}>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('this'); }}>Delete only this event</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('following'); }}>Delete this and following events</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('all'); }}>Delete all events of the series</DropdownItem>
+		</Dropdown>
+	{:else if form.id}<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>{/if}
 	<Button color="alternative" size="sm" class="ml-auto" onclick={close}>Cancel</Button>
 	{#if inSeriesNow}
 		<ButtonGroup size="sm">

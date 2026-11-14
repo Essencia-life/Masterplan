@@ -259,15 +259,29 @@ export const refreshRows = command(
 );
 
 export const deleteEvent = command(
-	z.object({ calendar: z.string(), id: z.string() }),
-	async ({ calendar: key, id }) => {
+	z.object({ calendar: z.string(), id: z.string(), scope: z.enum(['this', 'following', 'all']).default('this') }),
+	async ({ calendar: key, id, scope }) => {
 		requireUser();
 		const calendarId = await resolveCalendarId(key);
 		await assertCanWrite(calendarId);
 		const before = (await serviceCalendar().events.get({ calendarId, eventId: id })).data;
-		await asUser((api) => api.events.delete({ calendarId, eventId: id, sendUpdates: 'none' }));
+		const masterId = before.recurringEventId ?? (before.recurrence?.length ? before.id! : undefined);
+		const day = dayOf(before.start);
+		let [s, e] = eventRange(before);
+		if (!masterId || scope === 'this') {
+			await asUser((api) => api.events.delete({ calendarId, eventId: id, sendUpdates: 'none' }));
+		} else {
+			const master = masterId === id ? before : (await serviceCalendar().events.get({ calendarId, eventId: masterId })).data;
+			if (scope === 'all' || day === dayOf(master.start)) {
+				await asUser((api) => api.events.delete({ calendarId, eventId: masterId, sendUpdates: 'none' }));
+				s = dayOf(master.start);
+			} else {
+				// the series ends the day before
+				await asUser((api) => api.events.patch({ calendarId, eventId: masterId, requestBody: { recurrence: linesBefore(master.recurrence ?? [], day, !!master.start?.date) }, sendUpdates: 'none' }));
+			}
+			e = addDaysIso(day, 400);
+		}
 		const rooms = (before.attendees ?? []).filter((a) => a.resource).map((a) => a.email!);
-		const [s, e] = eventRange(before);
 		return { fresh: await freshRows([key, ...rooms], s, e) };
 	}
 );
