@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRecurrence, firstOccurrence, moonDates, parseRecurrence } from './recurrence';
+import { buildRecurrence, firstOccurrence, linesBefore, linesFrom, moonDates, parseRecurrence } from './recurrence';
 
 describe('weekly', () => {
 	it('starts on the first matching weekday and lists the days', () => {
@@ -60,5 +60,23 @@ describe('parseRecurrence', () => {
 			expect(parseRecurrence(lines)).toEqual({ custom: lines });
 		}
 		expect(parseRecurrence([])).toEqual({ custom: [] });
+	});
+});
+
+describe('splitting a series', () => {
+	it('ends the first part the day before and keeps the rule for the second', () => {
+		const rule = ['RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=10'];
+		expect(linesBefore(rule, '2026-12-07', false)).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261206T235959Z']);
+		expect(linesBefore(['RRULE:FREQ=WEEKLY;BYDAY=MO'], '2026-12-07', true)).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261206']);
+		expect(linesBefore(['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261101'], '2026-12-07', true)).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261101']);
+		expect(linesFrom(['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20270101'], '2026-12-07')).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20270101']);
+		expect(linesFrom(rule, '2026-12-07')).toBeNull();
+	});
+	it('divides listed dates and can give the new part another time', () => {
+		const line = ['RDATE;TZID=Europe/Lisbon:20261120T190000,20261218T190000,20270115T190000'];
+		expect(linesBefore(line, '2026-12-18', false)).toEqual(['RDATE;TZID=Europe/Lisbon:20261120T190000']);
+		expect(linesFrom(line, '2026-12-18', '200000')).toEqual(['RDATE;TZID=Europe/Lisbon:20270115T200000']);
+		expect(linesFrom(line, '2027-01-15')).toEqual([]);
+		expect(linesBefore(line, '2026-11-20', false)).toEqual([]);
 	});
 });

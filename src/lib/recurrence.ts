@@ -77,3 +77,38 @@ export function parseRecurrence(lines: string[], moonProp?: string | null): { re
 	}
 	return { custom: lines };
 }
+
+// ---------- splitting a series ("this and following events") ----------
+
+const isoOf = (v: string) => `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+
+/** An RDATE/EXDATE line with only the dates `keep` accepts (and the time replaced, HHMMSS); null when none are left. */
+function filterDates(line: string, keep: (isoDate: string) => boolean, time?: string): string | null {
+	const i = line.indexOf(':');
+	const values = line.slice(i + 1).split(',').filter((v) => keep(isoOf(v)));
+	if (!values.length) return null;
+	return `${line.slice(0, i + 1)}${values.map((v) => (time && v.length > 8 && !v.endsWith('Z') ? `${v.slice(0, 9)}${time}` : v)).join(',')}`;
+}
+
+/** The part of a series that stays: it ends the day before `day`. */
+export function linesBefore(lines: string[], day: string, allDay: boolean): string[] {
+	const last = compact(addDaysIso(day, -1));
+	return lines.flatMap((l) => {
+		if (l.startsWith('RRULE:')) {
+			const parts = l.split(';').filter((p) => !p.startsWith('COUNT=') && !p.startsWith('UNTIL='));
+			const old = l.split(';').find((p) => p.startsWith('UNTIL='))?.slice(6, 14);
+			return [[...parts, `UNTIL=${old && old < last ? old : last}${allDay ? '' : 'T235959Z'}`].join(';')];
+		}
+		return (l.startsWith('RDATE') || l.startsWith('EXDATE') ? filterDates(l, (d) => d < day) : l) ?? [];
+	});
+}
+
+/** The part of a series that moves to a new series starting on `day`; null for rules this cannot split (COUNT). */
+export function linesFrom(lines: string[], day: string, time?: string): string[] | null {
+	if (lines.some((l) => l.startsWith('RRULE:') && /;COUNT=/.test(l))) return null;
+	return lines.flatMap((l) => {
+		if (l.startsWith('RDATE')) return filterDates(l, (d) => d > day, time) ?? []; // `day` itself is the new series' first event
+		if (l.startsWith('EXDATE')) return filterDates(l, (d) => d >= day) ?? [];
+		return [l];
+	});
+}

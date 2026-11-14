@@ -2,7 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { Badge, Button, Checkbox, CloseButton, Input, Label, Select, Spinner, TabItem, Tabs, Textarea, Toggle } from 'flowbite-svelte';
+	import { ChevronDown } from '@lucide/svelte';
+	import { Badge, Button, ButtonGroup, Checkbox, CloseButton, Dropdown, DropdownItem, Input, Label, Select, Spinner, TabItem, Tabs, Textarea, Toggle } from 'flowbite-svelte';
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { calendarIdFromSlug } from '#lib/calendar-id';
 	import { getTimeline } from '#lib/timeline.svelte';
@@ -63,6 +64,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	/** an existing booking is being fetched */
 	let loading = $state(false);
 	let saveError = $state<string | null>(null);
+	let scopeOpen = $state(false);
 
 	// (re)initialise whenever the route changes
 	$effect(() => {
@@ -272,7 +274,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 
 	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !repeatError);
 
-	async function save() {
+	async function save(scope: 'this' | 'following' | 'all' = repeat ? 'all' : 'this') {
 		busy = true;
 		saveError = null;
 		try {
@@ -288,6 +290,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				status: form.status,
 				description: form.description,
 				resourceIds: form.resourceIds,
+				scope,
 				...(repeat ? { repeat } : {}),
 				// only when the Jobs tab was touched, so other edits never rewrite them
 				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined, jobsScope: form.jobsScope } : {})
@@ -539,5 +542,17 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 <div class="flex items-center gap-2 border-t border-line p-3">
 	{#if form.id}<Button color="red" outline size="sm" onclick={remove} disabled={busy || loading}>Delete</Button>{/if}
 	<Button color="alternative" size="sm" class="ml-auto" onclick={close}>Cancel</Button>
-	<Button size="sm" onclick={save} loading={busy} disabled={!valid || loading}>Save</Button>
+	{#if inSeriesNow}
+		<ButtonGroup size="sm">
+			<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
+			<Button size="sm" id="save-scope" aria-label="More ways to save" disabled={!valid || loading || busy}><ChevronDown size={16} /></Button>
+		</ButtonGroup>
+		<Dropdown triggeredBy="#save-scope" simple placement="top-end" bind:isOpen={scopeOpen}>
+			<DropdownItem class="whitespace-nowrap" disabled={!!repeat} onclick={() => { scopeOpen = false; void save('this'); }}>Save only this event</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" disabled={!!repeat} onclick={() => { scopeOpen = false; void save('following'); }}>Save this and following events</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { scopeOpen = false; void save('all'); }}>Save all events of the series</DropdownItem>
+		</Dropdown>
+	{:else}
+		<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
+	{/if}
 </div>
