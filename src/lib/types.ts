@@ -1,4 +1,5 @@
 import type { Job } from '#lib/jobs';
+import type { Participant } from '#lib/participants';
 import type { Repeat } from '#lib/recurrence';
 
 export type RowInfo = {
@@ -54,6 +55,8 @@ export type EventDetail = {
 	resourceIds: string[];
 	/** jobs people can sign up for (Telegram week plan); empty when none or the calendar has none */
 	jobs: Job[];
+	/** people of a guest/volunteer booking (private property, Google does not notify them) */
+	participants: Participant[];
 	/** stable key of this kind of event, e.g. "lunch" (part of the sign-up storage key) */
 	type: string;
 	/** master event of a series, '' for single events; set for instances and for the master itself */

@@ -21,6 +21,7 @@ import {
 } from '#lib/server/google';
 import { DAY_MS, TIME_ZONE, addDaysIso } from '#lib/time';
 import { buildRecurrence, linesBefore, linesFrom, parseRecurrence, repeatSchema } from '#lib/recurrence';
+import { parseParticipants, participantProps, participantsSchema, supportsParticipants } from '#lib/participants';
 import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -82,6 +83,7 @@ export const getEvent = query(
 					endTime: allDay ? '' : localTime(ev.end!.dateTime!),
 					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!),
 					jobs: parseJobs(ev.extendedProperties?.private?.jobs),
+					participants: parseParticipants(ev.extendedProperties?.private),
 					type: ev.extendedProperties?.private?.type ?? '',
 					seriesId: ev.recurringEventId ?? (ev.recurrence?.length ? ev.id! : ''),
 					repeat,
@@ -110,6 +112,8 @@ const saveSchema = z.object({
 	/** undefined = leave the jobs untouched, [] = remove them */
 	jobs: jobsSchema.optional(),
 	type: typeSchema.optional(),
+	/** undefined = leave untouched, [] = remove */
+	participants: participantsSchema.optional(),
 	/** new events only: repeat weekly (RRULE) or on moon dates (RDATE list) */
 	repeat: repeatSchema.optional(),
 	/** for an event of a series: only this event, this and all following ones, or the whole series */
@@ -177,6 +181,12 @@ export const saveEvent = command(saveSchema, async (input) => {
 			? { jobs: JSON.stringify(input.jobs), type: input.type || slugify(input.title) || 'event' }
 			: { jobs: null, type: null };
 		Object.assign(props, jobProps);
+	}
+	if (input.participants) {
+		const { meta } = await loadMeta();
+		const row = meta.rows.find((r) => r.id === input.calendar);
+		if (!row || !supportsParticipants(meta.groups.find((g) => g.id === row.groupId)?.label ?? '', row.label)) error(400, 'Participants are not available in this calendar');
+		Object.assign(props, participantProps(input.participants));
 	}
 	if (input.repeat) {
 		// the series' first event: the master, or this event (a new series, or a single event becoming one)
