@@ -322,7 +322,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			bind:this={scroller}
-			class="min-w-0 flex-1 snap-x snap-proximity scroll-pl-(--label-w) overflow-auto overscroll-x-contain bg-surface"
+			class="min-w-0 flex-1 snap-x snap-mandatory scroll-pl-(--label-w) overflow-auto overscroll-x-contain bg-surface"
 			onscroll={onScroll}
 			onpointerdown={onDown}
 			onpointermove={onMove}
@@ -330,6 +330,7 @@
 			onpointercancel={onCancel}
 			oncontextmenu={(e) => (pressTimer || drag) && e.preventDefault()}
 			style:user-select={drag ? 'none' : undefined}
+			style:scroll-snap-type={drag ? 'none' : undefined}
 			style:-webkit-touch-callout="none"
 		>
 			<div bind:this={board} class="relative" style="width:{LABW + N_DAYS * DAYW}px">
@@ -339,7 +340,7 @@
 						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each months as m (m.key)}
-								<div class="absolute top-0 h-full snap-start snap-always overflow-clip border-l-2 border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
+								<div class="absolute top-0 h-full overflow-clip border-l-2 border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
 									<span class="sticky inline-block whitespace-nowrap px-2 font-display text-[15px] font-bold leading-[28px]" style="left:{LABW}px">{m.label}</span>
 								</div>
 							{/each}
@@ -350,9 +351,10 @@
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								<div
-									class="absolute top-0 flex h-full flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
+									class="absolute top-0 flex h-full snap-start flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
 									class:weekend={isWeekend(d)}
 									class:month-start={dom(d) === 1}
+									class:snap-always={dom(d) === 1}
 									class:today={d === TODAY}
 									style="left:{d * DAYW}px;width:{DAYW}px"
 								>
