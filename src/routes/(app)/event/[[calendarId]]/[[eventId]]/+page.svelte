@@ -2,12 +2,16 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { Badge, Button, Checkbox, CloseButton, Input, Label, Select, Spinner, TabItem, Tabs, Textarea, Toggle } from 'flowbite-svelte';
+	import { ChevronDown } from '@lucide/svelte';
+	import { Badge, Button, ButtonGroup, Checkbox, CloseButton, Dropdown, DropdownItem, Input, Label, Select, Spinner, TabItem, Tabs, Textarea, Toggle } from 'flowbite-svelte';
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { calendarIdFromSlug } from '#lib/calendar-id';
 	import { getTimeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
+import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
+	import { MOON_PHASES, MOON_RELATIONS } from '#lib/moon';
+	import { moonDates, type Repeat } from '#lib/recurrence';
 
 	const timeline = getTimeline();
 
@@ -42,9 +46,16 @@
 		allDay: true,
 		startTime: '09:00',
 		endTime: '10:00',
-		resourceIds: [] as string[]
+		resourceIds: [] as string[],
+		jobs: [] as Job[],
+		type: '',
+		seriesId: ''
 	});
-	let tab = $state<'details' | 'resources' | 'conflicts'>('details');
+	/** event key as stored on the event: fixed once set, sign-ups are stored under it */
+	let savedType = $state('');
+	/** jobs/key/scope as loaded, to tell whether the Jobs tab was touched */
+	let jobsBase = $state(JSON.stringify([[], '']));
+	let tab = $state<'details' | 'resources' | 'jobs' | 'conflicts'>('details');
 	let resolving = $state<string | null>(null);
 	let moveTo = $state<Record<string, string>>({});
 	let busy = $state(false);
@@ -52,6 +63,11 @@
 	/** an existing booking is being fetched */
 	let loading = $state(false);
 	let saveError = $state<string | null>(null);
+	let scopeOpen = $state(false);
+	let deleteOpen = $state(false);
+	/** first day when the event was opened: "following" and "all" cannot move it */
+	let savedStart = $state('');
+	const dayChanged = $derived(!!form.id && !!savedStart && form.start !== savedStart);
 
 	// (re)initialise whenever the route changes
 	$effect(() => {
@@ -63,7 +79,13 @@
 			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
 					if (id !== eventId) return; // another booking was opened meanwhile
-					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds };
+					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId };
+					savedType = e.type;
+					const loaded = repFromEvent(e);
+					rep = loaded;
+					savedStart = e.start;
+					repBase = JSON.stringify(loaded);
+					jobsBase = JSON.stringify([e.jobs, e.type]);
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
 				.finally(() => id === eventId && (loading = false));
@@ -84,8 +106,18 @@
 				allDay: true,
 				startTime: '09:00',
 				endTime: '10:00',
-				resourceIds: row && !isMain ? [row] : []
+				resourceIds: row && !isMain ? [row] : [],
+				jobs: [],
+				type: '',
+				seriesId: ''
 			};
+			savedType = '';
+			// not read back from `rep`: this effect would depend on the state it writes
+			const fresh = newRep();
+			rep = fresh;
+			repBase = JSON.stringify(fresh);
+			repeatCustom = [];
+			jobsBase = JSON.stringify([[], '']);
 		}
 	});
 
@@ -108,6 +140,55 @@
 		const all = ids.every((i) => form.resourceIds.includes(i));
 		form.resourceIds = all ? form.resourceIds.filter((x) => !ids.includes(x)) : [...new Set([...form.resourceIds, ...ids])];
 	}
+
+	// ----- repeat: new events, single events becoming a series, and existing series (changes apply to the whole series) -----
+	const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]] as const;
+	const MOON_LABELS = { NEW_MOON: 'New moon', FIRST_QUARTER: 'First quarter', FULL_MOON: 'Full moon', LAST_QUARTER: 'Last quarter' } as const;
+	const RELATION_LABELS = { EXACT: 'on the day of', LAST_BEFORE: 'last one before', LAST_ON_OR_BEFORE: 'last one on or before', FIRST_AFTER: 'first one after', FIRST_ON_OR_AFTER: 'first one on or after' } as const;
+	const newRep = () => ({ kind: 'none' as 'none' | 'weekly' | 'moon' | 'keep', days: null as number[] | null, interval: 1, until: '', phase: 'FULL_MOON' as (typeof MOON_PHASES)[number], relation: 'LAST_BEFORE' as (typeof MOON_RELATIONS)[number], weekday: null as number | null });
+	let rep = $state(newRep());
+	const startWeekday = $derived(form.start ? new Date(form.start + 'T00:00:00Z').getUTCDay() : 1);
+	/** until chosen otherwise, the repeat falls on the weekday of the start date */
+	const repDays = $derived(rep.days ?? [startWeekday]);
+	const repWeekday = $derived(rep.weekday ?? startWeekday);
+	let repBase = $state(JSON.stringify(newRep()));
+	let repeatCustom = $state<string[]>([]);
+	const inSeriesNow = $derived(!!form.seriesId);
+	/** the repeat as stored on the event; unknown recurrence rules are kept as they are */
+	function repFromEvent(e: EventDetail) {
+		const r = newRep();
+		repeatCustom = e.repeatCustom;
+		if (e.repeat?.kind === 'weekly') Object.assign(r, { kind: 'weekly', interval: e.repeat.interval, days: e.repeat.weekdays, until: e.repeat.until ?? '' });
+		else if (e.repeat?.kind === 'moon') Object.assign(r, { kind: 'moon', phase: e.repeat.phase, relation: e.repeat.relation, weekday: e.repeat.weekday, until: e.repeat.until });
+		else if (e.repeatCustom.length) r.kind = 'keep';
+		return r;
+	}
+	const repeat = $derived<Repeat | undefined>(
+		JSON.stringify(rep) === repBase ? undefined
+		: rep.kind === 'weekly' ? { kind: 'weekly', interval: Number(rep.interval), weekdays: repDays, until: rep.until || undefined }
+		: rep.kind === 'moon' ? { kind: 'moon', phase: rep.phase, relation: rep.relation, weekday: Number(repWeekday), until: rep.until }
+		: undefined
+	);
+	const moonPreview = $derived(repeat?.kind === 'moon' && repeat.until && form.start ? moonDates(repeat, form.start, repeat.until) : []);
+	const repeatError = $derived(
+		repeat?.kind === 'weekly' && !repeat.weekdays.length ? 'Pick at least one weekday'
+		: repeat?.kind === 'moon' && !repeat.until ? 'Choose an end date'
+		: repeat && dayChanged ? 'The repeat cannot be changed together with the day: save the day for this event first'
+		: repeat?.kind === 'moon' && !moonPreview.length ? 'No matching dates in that period'
+		: null
+	);
+	// moon dates are listed one by one, so they need an end: half a year by default
+	$effect(() => {
+		if (rep.kind === 'moon' && !rep.until && form.start) rep.until = dayToIso(isoToDay(form.start) + 180);
+	});
+
+	// ----- jobs -----
+	const jobsEnabled = $derived.by(() => {
+		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
+		return !!r && supportsJobs(groupLabel(r.groupId), r.label);
+	});
+	const jobsError = $derived(jobsEnabled ? jobsProblem(form.jobs, form.type) : null);
+	const jobsDirty = $derived(JSON.stringify([form.jobs, form.type]) !== jobsBase);
 
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
@@ -197,9 +278,10 @@
 		return null;
 	});
 
-	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start);
+	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !repeatError);
 
-	async function save() {
+	// jobs and repeat describe the series, so they are saved for all events unless chosen otherwise
+	async function save(scope: 'this' | 'following' | 'all' = repeat || (jobsEnabled && jobsDirty) ? 'all' : 'this') {
 		busy = true;
 		saveError = null;
 		try {
@@ -214,7 +296,11 @@
 				endTime: form.allDay ? undefined : form.endTime,
 				status: form.status,
 				description: form.description,
-				resourceIds: form.resourceIds
+				resourceIds: form.resourceIds,
+				scope,
+				...(repeat ? { repeat } : {}),
+				// only when the Jobs tab was touched, so other edits never rewrite them
+				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined } : {})
 			});
 			timeline.applyFresh(res.fresh);
 			// no conflicts: show the room bookings right away as tentative, Google mirrors them a moment later
@@ -243,11 +329,12 @@
 			busy = false;
 		}
 	}
-	async function remove() {
-		if (!form.id || !confirm('Delete this booking?')) return;
+	async function remove(scope: 'this' | 'following' | 'all' = 'this') {
+		const what = { this: 'Delete this booking?', following: 'Delete this and all following events of the series?', all: 'Delete all events of the series?' }[scope];
+		if (!form.id || !confirm(what)) return;
 		busy = true;
 		try {
-			const res = await deleteEvent({ calendar: form.calendar, id: form.id });
+			const res = await deleteEvent({ calendar: form.calendar, id: form.id, scope });
 			timeline.applyFresh(res.fresh);
 			await close();
 		} catch (e) {
@@ -330,6 +417,43 @@
 						<Label for="f-status" class="mb-1">Status</Label>
 						<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />
 					</div>
+						<div class="space-y-2">
+							<Label for="f-rep" class="mb-1">Repeat</Label>
+							<Select id="f-rep" items={[...(inSeriesNow ? (repeatCustom.length ? [{ value: 'keep', name: 'Custom (set in Google Calendar)' }] : []) : [{ value: 'none', name: 'Does not repeat' }]), { value: 'weekly', name: 'Weekly' }, { value: 'moon', name: 'By moon phase' }]} bind:value={rep.kind} />
+							{#if rep.kind === 'keep'}
+								<p class="text-xs text-muted">{repeatCustom.join(' · ')}</p>
+							{/if}
+							{#if inSeriesNow && rep.kind !== 'keep' && JSON.stringify(rep) !== repBase}
+								<p class="text-xs text-muted">Changes the whole series. Edits to single events in it may be reset.</p>
+							{/if}
+							{#if rep.kind === 'weekly'}
+								<Select items={[1, 2, 3, 4].map((value) => ({ value, name: value === 1 ? 'Every week' : `Every ${value} weeks` }))} bind:value={rep.interval} />
+								<div class="flex flex-wrap gap-x-4 gap-y-1">
+									{#each WEEKDAYS as [label, d] (d)}
+										<Checkbox checked={repDays.includes(d)} onchange={(e) => (rep.days = (e.currentTarget as HTMLInputElement).checked ? [...repDays, d] : repDays.filter((x) => x !== d))}>{label}</Checkbox>
+									{/each}
+								</div>
+								<div>
+									<Label for="f-until" class="mb-1">Until (optional)</Label>
+									<Input id="f-until" type="date" min={form.start} bind:value={rep.until} />
+								</div>
+							{:else if rep.kind === 'moon'}
+								<div class="grid grid-cols-3 gap-2">
+									<Select items={WEEKDAYS.map(([name, value]) => ({ value, name }))} value={repWeekday} onchange={(e) => (rep.weekday = Number((e.currentTarget as HTMLSelectElement).value))} />
+									<Select items={MOON_RELATIONS.map((value) => ({ value, name: RELATION_LABELS[value] }))} bind:value={rep.relation} />
+									<Select items={MOON_PHASES.map((value) => ({ value, name: MOON_LABELS[value] }))} bind:value={rep.phase} />
+								</div>
+								<div>
+									<Label for="f-until" class="mb-1">Until</Label>
+									<Input id="f-until" type="date" min={form.start} bind:value={rep.until} />
+								</div>
+								<p class="text-xs text-muted">
+									{#if moonPreview.length}{moonPreview.length} dates from {moonPreview.slice(0, 4).join(', ')}{moonPreview.length > 4 ? ' …' : ''}. The series lists all of them, up to about two years.{:else}No dates in that period.{/if}
+								</p>
+							{/if}
+							{#if repeatError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{repeatError}</p>{/if}
+						</div>
+
 					<div>
 						<Label for="f-desc" class="mb-1">Notes</Label>
 						<Textarea id="f-desc" class="w-full" rows={4} bind:value={form.description} />
@@ -352,6 +476,38 @@
 						<p class="text-sm text-muted">No resource calendars found. Subscribe the service account's user to them first.</p>
 					{/each}
 			</TabItem>
+			{#if jobsEnabled}
+				<TabItem key="jobs" title="Jobs ({form.jobs.length})">
+					<p class="text-sm text-muted">People sign up for these jobs in the Telegram week plan.</p>
+					{#if form.seriesId}<p class="text-xs text-muted">Save saves the jobs for all events of the series; the arrow next to Save has the other options.</p>{/if}
+					{#each form.jobs as job, i (i)}
+						<div class="space-y-2 rounded-lg border border-line p-3">
+							<div class="flex items-center gap-2">
+								<Input class="flex-1" placeholder="e.g. Lunch chef" aria-label="Job title" bind:value={job.title} />
+								<Button size="xs" color="alternative" onclick={() => form.jobs.splice(i, 1)}>Remove</Button>
+							</div>
+							<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+								<label class="flex items-center gap-2 text-sm">
+									Slots
+									<input type="number" min="1" max="20" class="w-16 rounded-lg border border-line bg-surface p-1.5 text-sm text-ink" bind:value={job.slots} />
+								</label>
+								<Checkbox bind:checked={job.askDetails} disabled={job.slots !== 1}>Ask for details</Checkbox>
+								<Checkbox bind:checked={job.sos}>Call for help if empty</Checkbox>
+								{#if job.key}<span class="ml-auto text-xs text-muted">{job.key}</span>{/if}
+							</div>
+						</div>
+					{/each}
+					<Button size="xs" color="alternative" onclick={() => form.jobs.push(newJob())}>Add job</Button>
+					{#if form.jobs.length}
+						<div>
+							<Label for="f-type" class="mb-1">Event key</Label>
+							<Input id="f-type" bind:value={form.type} placeholder={slugify(form.title) || 'event'} disabled={!!savedType} />
+							<p class="mt-1 text-xs text-muted">Stable name of this kind of event; sign-ups are stored under it. Chosen once, do not change it afterwards.</p>
+						</div>
+					{/if}
+					{#if jobsError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{jobsError}</p>{/if}
+				</TabItem>
+			{/if}
 			{#if conflicts.length}
 				<TabItem key="conflicts" title="Conflicts ({conflicts.length})">
 						<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
@@ -387,7 +543,30 @@
 </div>
 
 <div class="flex items-center gap-2 border-t border-line p-3">
-	{#if form.id}<Button color="red" outline size="sm" onclick={remove} disabled={busy || loading}>Delete</Button>{/if}
+	{#if form.id && inSeriesNow}
+		<ButtonGroup size="sm">
+			<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>
+			<Button color="red" outline size="sm" id="delete-scope" aria-label="More ways to delete" disabled={busy || loading}><ChevronDown size={16} /></Button>
+		</ButtonGroup>
+		<Dropdown triggeredBy="#delete-scope" simple placement="top-start" bind:isOpen={deleteOpen}>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('this'); }}>Delete only this event</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('following'); }}>Delete this and following events</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('all'); }}>Delete all events of the series</DropdownItem>
+		</Dropdown>
+	{:else if form.id}<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>{/if}
 	<Button color="alternative" size="sm" class="ml-auto" onclick={close}>Cancel</Button>
-	<Button size="sm" onclick={save} loading={busy} disabled={!valid || loading}>Save</Button>
+	{#if inSeriesNow}
+		<ButtonGroup size="sm">
+			<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
+			<Button size="sm" id="save-scope" aria-label="More ways to save" disabled={!valid || loading || busy}><ChevronDown size={16} /></Button>
+		</ButtonGroup>
+		<Dropdown triggeredBy="#save-scope" simple placement="top-end" bind:isOpen={scopeOpen}>
+			{#if dayChanged}<p class="max-w-56 px-4 py-2 text-xs text-muted">The day changed, so this can only be saved for this event.</p>{/if}
+			<DropdownItem class="whitespace-nowrap" disabled={!!repeat} onclick={() => { scopeOpen = false; void save('this'); }}>Save only this event</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" disabled={!!repeat || dayChanged} onclick={() => { scopeOpen = false; void save('following'); }}>Save this and following events</DropdownItem>
+			<DropdownItem class="whitespace-nowrap" disabled={dayChanged} onclick={() => { scopeOpen = false; void save('all'); }}>Save all events of the series</DropdownItem>
+		</Dropdown>
+	{:else}
+		<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
+	{/if}
 </div>

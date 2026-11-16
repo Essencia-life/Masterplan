@@ -268,7 +268,11 @@ export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): 
 		const status = (e as { code?: number }).code;
 		if (status === 403) error(403, 'You do not have permission for this calendar');
 		if (status === 404) error(404, 'Not found');
-		throw e;
+		// Google's own message is often just "Required"; the reason and the field say what is meant
+		const detail = (e as { errors?: { reason?: string; location?: string; message?: string }[] }).errors
+			?.map((x) => [x.reason, x.location, x.message].filter(Boolean).join(' '))
+			.join('; ');
+		throw new Error(`${msg || 'Google Calendar request failed'}${detail && detail !== msg ? ` (${detail})` : ''}`);
 	}
 }
 
