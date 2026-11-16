@@ -322,7 +322,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			bind:this={scroller}
-			class="min-w-0 flex-1 overflow-auto overscroll-x-contain bg-surface"
+			class="min-w-0 flex-1 snap-x snap-proximity scroll-pl-(--label-w) overflow-auto overscroll-x-contain bg-surface"
 			onscroll={onScroll}
 			onpointerdown={onDown}
 			onpointermove={onMove}
@@ -339,7 +339,7 @@
 						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each months as m (m.key)}
-								<div class="absolute top-0 h-full overflow-clip border-l-2 border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
+								<div class="absolute top-0 h-full snap-start snap-always overflow-clip border-l-2 border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
 									<span class="sticky inline-block whitespace-nowrap px-2 font-display text-[15px] font-bold leading-[28px]" style="left:{LABW}px">{m.label}</span>
 								</div>
 							{/each}
