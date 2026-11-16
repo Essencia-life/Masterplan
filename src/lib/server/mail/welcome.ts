@@ -1,14 +1,15 @@
 import { fromAttendees, supportsParticipants, type Participant } from '#lib/participants';
 import { claimOnce, canClaim, releaseClaim } from '#lib/server/cache';
-import { addDays, dayOf, loadMeta, resolveCalendarId, serviceCalendar, withBackoff } from '#lib/server/google';
+import { addDays, eventRange, loadMeta, resolveCalendarId, serviceCalendar, withBackoff } from '#lib/server/google';
 import { renderLayout } from './layout';
 import { sendRaw, sender } from './gmail';
 import { escapeHtml, fill, markdownToHtml, markdownToText } from './markdown';
 import { buildMime } from './mime';
-import { getTemplate, type MailTemplate } from './templates';
+import { CATCH_UP_DAYS, isDue } from './timing';
+import { getTemplate, TEMPLATE_SLUGS, type MailTemplate } from './templates';
 
-/** Bookings in a calendar whose name has "volunteer" get volunteer-welcome, all other participant calendars guest-welcome. */
-export const templateSlugFor = (groupLabel: string, calendarLabel: string) => (/volunteer/i.test(`${groupLabel} ${calendarLabel}`) ? 'volunteer-welcome' : 'guest-welcome');
+/** Templates are named "<kind>-<what>" (guest-welcome, volunteer-thanks, …); calendars with "volunteer" in the group or calendar name are volunteers, all other participant calendars guests. */
+export const kindOf = (groupLabel: string, calendarLabel: string) => (/volunteer/i.test(`${groupLabel} ${calendarLabel}`) ? 'volunteer' : 'guest');
 
 const MAX_PER_RUN = 40; // keeps a run inside the function time limit; the rest follows with the next run
 const CLAIM_DAYS = 120;
@@ -21,73 +22,85 @@ async function compile(t: MailTemplate) {
 }
 type Compiled = Awaited<ReturnType<typeof compile>>;
 
-async function deliver(c: Compiled, to: Participant, arrival: string) {
-	const html = fill(c.html, { name: escapeHtml(to.name), arrival: escapeHtml(arrival) });
-	const text = fill(c.text, { name: to.name, arrival });
-	const subject = fill(c.t.subject, { name: to.name, arrival });
-	await sendRaw(buildMime({ from: sender(), to: { name: to.name, email: to.email }, subject, text, html, attachments: c.t.attachments }));
+type Dates = { arrival: string; departure: string };
+
+async function deliver(c: Compiled, to: Participant, d: Dates) {
+	const vars = { name: to.name, arrival: longDate(d.arrival), departure: longDate(d.departure) };
+	const escaped = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, escapeHtml(v)]));
+	await sendRaw(
+		buildMime({ from: sender(), to: { name: to.name, email: to.email }, subject: fill(c.t.subject, vars), text: fill(c.text, vars), html: fill(c.html, escaped), attachments: c.t.attachments })
+	);
 }
 
-/** One sample mail to `to`, nothing is claimed or recorded. */
+/** One sample mail to `to` (arrival and departure are made up), nothing is claimed or recorded. */
 export async function sendTest(slug: string, to: string) {
 	const c = await compile(getTemplate(slug));
-	await deliver(c, { name: 'Test Guest', email: to }, longDate(addDays(new Date().toISOString().slice(0, 10), c.t.daysBefore)));
+	const day = new Date().toISOString().slice(0, 10);
+	await deliver(c, { name: 'Test Guest', email: to }, { arrival: addDays(day, 3), departure: addDays(day, 10) });
 }
 
 /**
- * Welcome mails for every confirmed booking in the guest and volunteer calendars that starts within the
- * template's "days before" window, for each participant who has not had one yet. Safe to run repeatedly:
- * a participant is claimed in Redis before the mail goes out and the claim is released if sending fails.
+ * Sends every mail that is due: for each confirmed booking in the guest and volunteer calendars, each
+ * participant who has not had a template's mail yet. Safe to run repeatedly: a participant is claimed in
+ * Redis before the mail goes out and the claim is released if sending fails.
  */
 export async function sendWelcomes(today: string) {
-	if (!canClaim) throw new Error('Upstash Redis is required so that nobody receives a welcome mail twice');
+	if (!canClaim) throw new Error('Upstash Redis is required so that nobody receives a mail twice');
 	sender(); // fail early when the sender is not configured
 	const { meta } = await loadMeta();
 	const groupLabel = (id: string) => meta.groups.find((g) => g.id === id)?.label ?? '';
 	const rows = meta.rows.filter((r) => r.kind === 'calendar' && r.available && supportsParticipants(groupLabel(r.groupId), r.label));
 
 	const result = { sent: 0, skipped: 0, errors: [] as string[] };
-	const templates = new Map<string, Compiled | Error>();
+	const compiled = new Map<string, Compiled | Error>();
 	const templateFor = async (slug: string) => {
-		if (!templates.has(slug)) templates.set(slug, await compile(getTemplate(slug)).catch((e: Error) => e));
-		return templates.get(slug)!;
+		if (!compiled.has(slug)) compiled.set(slug, await compile(getTemplate(slug)).catch((e: Error) => e));
+		return compiled.get(slug)!;
 	};
 
 	for (const row of rows) {
-		const slug = templateSlugFor(groupLabel(row.groupId), row.label);
-		const c = await templateFor(slug);
-		if (c instanceof Error) {
-			result.errors.push(c.message);
-			continue;
+		const kind = kindOf(groupLabel(row.groupId), row.label);
+		const templates: Compiled[] = [];
+		for (const slug of TEMPLATE_SLUGS.filter((s) => s.startsWith(`${kind}-`))) {
+			const c = await templateFor(slug);
+			if (c instanceof Error) result.errors.push(c.message);
+			else templates.push(c);
 		}
-		const lastDay = addDays(today, c.t.daysBefore);
+		if (!templates.length) continue;
+		// one read covers every template: bookings that start soon, and bookings that ended recently
+		const ahead = Math.max(0, ...templates.filter((c) => c.t.timing.when === 'before').map((c) => c.t.timing.days));
+		const back = Math.max(0, ...templates.filter((c) => c.t.timing.when === 'after').map((c) => c.t.timing.days)) + CATCH_UP_DAYS;
 		const calendarId = await resolveCalendarId(row.id);
 		const res = await withBackoff(() =>
 			serviceCalendar().events.list({
 				calendarId,
-				timeMin: new Date(`${today}T00:00:00Z`).toISOString(),
-				timeMax: new Date(`${addDays(lastDay, 1)}T00:00:00Z`).toISOString(),
+				timeMin: new Date(`${addDays(today, -back)}T00:00:00Z`).toISOString(),
+				timeMax: new Date(`${addDays(today, ahead + 1)}T00:00:00Z`).toISOString(),
 				singleEvents: true,
 				orderBy: 'startTime',
-				maxResults: 250
+				maxResults: 250 // shortcut: no paging, more than 250 bookings in the window would be cut off
 			})
 		);
 		for (const e of res.data.items ?? []) {
-			const day = dayOf(e.start);
-			if (e.status !== 'confirmed' || !e.id || day < today || day > lastDay) continue;
-			for (const person of fromAttendees(e.attendees)) {
-				if (result.sent >= MAX_PER_RUN) return result;
-				const key = `welcome:${e.id}:${person.email.toLowerCase()}`;
-				if (!(await claimOnce(key, CLAIM_DAYS * 86400))) {
-					result.skipped++;
-					continue;
-				}
-				try {
-					await deliver(c, person, longDate(day));
-					result.sent++;
-				} catch (err) {
-					await releaseClaim(key);
-					result.errors.push(`${person.email}: ${err instanceof Error ? err.message : err}`);
+			if (e.status !== 'confirmed' || !e.id) continue;
+			const [first, end] = eventRange(e);
+			const last = addDays(end, -1);
+			for (const c of templates) {
+				if (!isDue(c.t, today, first, last)) continue;
+				for (const person of fromAttendees(e.attendees)) {
+					if (result.sent >= MAX_PER_RUN) return result;
+					const key = `mail:${c.t.slug}:${e.id}:${person.email.toLowerCase()}`;
+					if (!(await claimOnce(key, CLAIM_DAYS * 86400))) {
+						result.skipped++;
+						continue;
+					}
+					try {
+						await deliver(c, person, { arrival: first, departure: last });
+						result.sent++;
+					} catch (err) {
+						await releaseClaim(key);
+						result.errors.push(`${person.email}: ${err instanceof Error ? err.message : err}`);
+					}
 				}
 			}
 		}

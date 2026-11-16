@@ -16,25 +16,33 @@ collections:
       preview: false
     files:
       - name: guest-welcome
-        label: Guests
+        label: Guests, welcome
         file: content/mail/guest-welcome.json
         format: json
         fields: &mail_fields
-          - { name: subject, label: Subject, widget: string, hint: 'Placeholders work here too: {{name}}, {{arrival}}' }
-          - { name: daysBefore, label: Days before arrival, widget: number, value_type: int, min: 0, max: 60, default: 3, hint: 'Sent this many days before the arrival; bookings made later get it at the next daily run' }
+          - { name: subject, label: Subject, widget: string, hint: 'Placeholders work here too: {{name}}, {{arrival}}, {{departure}}' }
+          - name: timing
+            label: Send
+            widget: object
+            hint: 'Bookings made later get the mail at the next daily run; a mail more than a week overdue is not sent'
+            fields:
+              - { name: days, label: Days, widget: number, value_type: int, min: 0, max: 60, default: 3 }
+              - name: when
+                label: When
+                widget: select
+                options: [{ label: before arrival, value: before }, { label: after departure, value: after }]
+                default: before
           - name: message
             label: Message
             widget: markdown
             buttons: [bold, italic, link, bulleted-list]
-            editor_components: [name, arrival]
-            hint: 'Use the + button to insert the guest name or the arrival date'
+            editor_components: [name, arrival, departure]
+            hint: 'Use the + button to insert the guest name or the arrival / departure date'
           - name: attachments
             label: Attachments (PDF only)
             widget: list
             required: false
             field: { name: file, label: PDF, widget: file, accept: .pdf, required: true }
-      - name: volunteer-welcome
-        label: Volunteers
-        file: content/mail/volunteer-welcome.json
-        format: json
-        fields: *mail_fields
+      - { name: guest-thanks, label: 'Guests, thank you', file: content/mail/guest-thanks.json, format: json, fields: *mail_fields }
+      - { name: volunteer-welcome, label: 'Volunteers, welcome', file: content/mail/volunteer-welcome.json, format: json, fields: *mail_fields }
+      - { name: volunteer-thanks, label: 'Volunteers, thank you', file: content/mail/volunteer-thanks.json, format: json, fields: *mail_fields }

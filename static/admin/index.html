@@ -10,10 +10,11 @@
 	<body>
 		<script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
 		<script>
-			// Placeholders for the mail text: inserted as {{name}} / {{arrival}}, replaced for every guest when the mail is sent
+			// Placeholders for the mail text: inserted as {{name}} / {{arrival}} / {{departure}}, replaced for every guest when the mail is sent
 			for (const [id, label] of [
 				['name', 'Guest name'],
-				['arrival', 'Arrival date']
+				['arrival', 'Arrival date'],
+				['departure', 'Departure date']
 			]) {
 				CMS.registerEditorComponent({
 					id,

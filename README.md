@@ -98,13 +98,13 @@ npm run build
 
 Guests and volunteers get a welcome mail a few days before they arrive. A daily Vercel cron (`vercel.json`, 08:00 UTC) calls `/api/cron/welcome`, which
 
-- looks at all confirmed bookings in calendars that support participants (name contains "guest" or "volunteer") starting within the template's "days before" window,
-- sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_SENDER`,
-- remembers every sent mail in Redis (`welcome:<event>:<email>`, 120 days) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
+- looks at all confirmed bookings in calendars that support participants (name contains "guest" or "volunteer"),
+- for every template of that kind whose mail is due (see below), sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_SENDER`,
+- remembers every sent mail in Redis (`mail:<template>:<event>:<email>`, 120 days) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
 
-Calendars with "volunteer" in the group or calendar name use `volunteer-welcome`, all other participant calendars `guest-welcome`. Unconfirmed bookings get nothing.
+Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer-welcome`, `volunteer-thanks`. Calendars with "volunteer" in the group or calendar name use the `volunteer-` ones, all other participant calendars the `guest-` ones. Every template has a **timing**: N days *before arrival* or N days *after departure* (departure = the booking's last day). A mail is due from that day on, bookings made later get it with the next run, and a mail more than 7 days overdue is skipped (a missed cron run must not mail old guests). Unconfirmed bookings get nothing.
 
-**Texts and attachments** are maintained in Sveltia CMS (open `/admin/` on the deployed site; `static/admin/config.yml`, backend GitHub). One entry per slug (`guest-welcome`, `volunteer-welcome`; add more in the config and in `templateSlugFor`): subject, days before, message (simple Markdown: bold, italic, links, lists, `##` heading) and PDF attachments. The editor has two components for the placeholders `{{name}}` and `{{arrival}}`, which are replaced per guest. The files live in `content/mail/*.json` and `content/mail/files/*.pdf`; they are read at build time, so a change goes live with the next deployment, and the PDFs are not public.
+**Texts and attachments** are maintained in Sveltia CMS (open `/admin/` on the deployed site; `static/admin/config.yml`, backend GitHub). One entry per slug (add more in the config, as `guest-…` or `volunteer-…`): subject, timing, message (simple Markdown: bold, italic, links, lists, `##` heading) and PDF attachments. The editor has components for the placeholders `{{name}}`, `{{arrival}}` and `{{departure}}`, which are replaced per guest. The files live in `content/mail/*.json` and `content/mail/files/*.pdf`; they are read at build time, so a change goes live with the next deployment, and the PDFs are not public.
 
 **Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): forest header with the "essência" wordmark, terra accent, parchment background. Gmail ignores web fonts, the serif falls back to Georgia. There is no logo image in the repo; replace the header text by an `<mj-image>` once there is a PNG.
 

@@ -15,8 +15,10 @@ const MAX_ATTACHMENTS_BYTES = 20 * 1024 * 1024; // Gmail's limit is 25 MB per me
 const templateSchema = z.object({
 	subject: z.string().trim().min(1, 'subject is empty'),
 	message: z.string().trim().min(1, 'message is empty'),
-	/** send this many days before arrival (and for bookings made later, as soon as the next run happens) */
-	daysBefore: z.number().int().min(0).max(60).default(3),
+	/** when to send: `days` before the arrival or after the departure (bookings made later get it with the next run) */
+	timing: z
+		.object({ days: z.number().int().min(0).max(60), when: z.enum(['before', 'after']) })
+		.default({ days: 3, when: 'before' }),
 	attachments: z.array(z.string()).default([])
 });
 

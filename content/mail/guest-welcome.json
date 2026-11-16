@@ -1,6 +1,9 @@
 {
 	"subject": "Welcome to Essência",
-	"daysBefore": 3,
+	"timing": {
+		"days": 3,
+		"when": "before"
+	},
 	"message": "Dear {{name}},\n\nWe are happy to welcome you at Essência! You arrive on **{{arrival}}**.\n\nIf you have any questions before you come, just reply to this email.\n\nSee you soon,\nthe Essência team",
 	"attachments": []
 }
