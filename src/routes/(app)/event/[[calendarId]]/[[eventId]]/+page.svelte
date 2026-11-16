@@ -495,11 +495,11 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			</TabItem>
 			{#if partsEnabled}
 				<TabItem key="participants" title="People ({form.participants.length})">
-					<p class="text-sm text-muted">Saved with the booking only. Nobody is invited or notified by Google.</p>
+					<p class="text-sm text-muted">Added as guests of the event. Google sends no invitation or update email, but the event shows up in the calendar of anyone with a Google account.</p>
 					{#each form.participants as p, i (i)}
 						<div class="flex items-center gap-2">
 							<Input class="min-w-0 flex-1" placeholder="Name" aria-label="Name" bind:value={p.name} />
-							<Input class="min-w-0 flex-1" type="email" placeholder="Email (optional)" aria-label="Email" bind:value={p.email} />
+							<Input class="min-w-0 flex-1" type="email" placeholder="Email" aria-label="Email" bind:value={p.email} />
 							<CloseButton aria-label="Remove person" onclick={() => form.participants.splice(i, 1)} />
 						</div>
 					{/each}

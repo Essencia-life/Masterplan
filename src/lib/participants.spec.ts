@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newParticipant, parseParticipants, participantProps, participantsProblem, supportsParticipants } from './participants';
+import { fromAttendees, newParticipant, participantsProblem, supportsParticipants, toAttendee } from './participants';
 
 describe('supportsParticipants', () => {
 	it('matches guest and volunteer calendars only', () => {
@@ -10,34 +10,29 @@ describe('supportsParticipants', () => {
 });
 
 describe('participantsProblem', () => {
-	it('needs a name, an email is optional but must be valid', () => {
+	it('needs a name and a valid email', () => {
 		expect(participantsProblem([newParticipant()])).toBe('Every person needs a name');
-		expect(participantsProblem([{ name: 'Ana', email: '' }])).toBeNull();
-		expect(participantsProblem([{ name: 'Ana', email: 'ana@example.org' }])).toBeNull();
+		expect(participantsProblem([{ name: 'Ana', email: '' }])).toBe('Every person needs an email address');
 		expect(participantsProblem([{ name: 'Ana', email: 'ana@' }])).toBe('Not a valid email address');
+		expect(participantsProblem([{ name: 'Ana', email: 'ana@example.org' }])).toBeNull();
+	});
+	it('rejects the same email twice', () => {
+		const p = [{ name: 'Ana', email: 'ana@example.org' }, { name: 'A.', email: 'ANA@example.org' }];
+		expect(participantsProblem(p)).toBe('Every email address can only be added once');
 	});
 });
 
-describe('storage', () => {
-	it('round-trips short lists in a single property', () => {
-		const list = [{ name: 'Ana', email: 'ana@example.org' }, { name: 'Ben', email: '' }];
-		const props = participantProps(list);
-		expect(props.participants).toBe(JSON.stringify(list));
-		expect(props.participants2).toBeNull();
-		expect(parseParticipants(props as Record<string, string>)).toEqual(list);
-	});
-
-	it('splits long lists into values of at most 1000 characters and reads them back', () => {
-		const list = Array.from({ length: 30 }, (_, i) => ({ name: `Person number ${i} with a long name`, email: `person${i}@example.org` }));
-		const props = participantProps(list);
-		expect(props.participants2).not.toBeNull();
-		for (const v of Object.values(props)) expect((v ?? '').length).toBeLessThanOrEqual(1000);
-		const stored = Object.fromEntries(Object.entries(props).filter(([, v]) => v)) as Record<string, string>;
-		expect(parseParticipants(stored)).toEqual(list);
-	});
-
-	it('clears everything for an empty list', () => {
-		expect(Object.values(participantProps([])).every((v) => v === null)).toBe(true);
-		expect(parseParticipants({})).toEqual([]);
+describe('attendees', () => {
+	it('maps to Google attendees and back, leaving out rooms and the organizer', () => {
+		const ana = { name: 'Ana', email: 'ana@example.org' };
+		expect(toAttendee(ana)).toEqual({ email: 'ana@example.org', displayName: 'Ana' });
+		const attendees = [
+			{ email: 'room@resource.calendar.google.com', resource: true },
+			{ email: 'me@essencia.life', self: true, organizer: true },
+			{ email: 'ana@example.org', displayName: 'Ana' },
+			{ email: 'ben@example.org' }
+		];
+		expect(fromAttendees(attendees)).toEqual([ana, { name: 'ben@example.org', email: 'ben@example.org' }]);
+		expect(fromAttendees(undefined)).toEqual([]);
 	});
 });
