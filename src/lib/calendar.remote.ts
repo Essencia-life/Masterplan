@@ -170,10 +170,10 @@ export const saveEvent = command(saveSchema, async (input) => {
 		}
 	}
 	// attendees are replaced as a whole: rooms plus people (the existing ones when the form did not touch them)
-	requestBody.attendees = [
-		...input.resourceIds.map((email) => ({ email, resource: true })),
-		...(input.participants ?? fromAttendees((master ?? before)?.attendees)).map(toAttendee)
-	];
+	const people = (input.participants ?? fromAttendees((master ?? before)?.attendees)).map(toAttendee);
+	requestBody.attendees = [...input.resourceIds.map((email) => ({ email, resource: true })), ...people];
+	// guests only receive the event: they cannot see each other, edit it or invite others
+	if (people.length) Object.assign(requestBody, { guestsCanSeeOtherGuests: false, guestsCanModify: false, guestsCanInviteOthers: false });
 	// private properties: null removes one in a patch
 	const props: Record<string, string | null> = {};
 	let lastDay = input.end;
