@@ -4,8 +4,8 @@ import type { CalEvent } from '#lib/types';
 
 const TTL_SECONDS = 60;
 
-const url = env.KV_REST_API_URL || env.KV_REST_API_URL;
-const token = env.KV_REST_API_TOKEN || env.KV_REST_API_TOKEN;
+const url = env.KV_REST_API_URL;
+const token = env.KV_REST_API_TOKEN;
 /** Shared cache for all serverless instances; without credentials (local dev) an in-process map is used. */
 const redis = url && token ? new Redis({ url, token }) : null;
 
@@ -78,4 +78,18 @@ export async function invalidateRows(rowIds: string[]) {
 	} catch (e) {
 		console.error('cache invalidation failed', e instanceof Error ? e.message : e);
 	}
+}
+
+/** True when Redis is configured: "send once" markers need shared storage, memory would not survive a serverless instance. */
+export const canClaim = !!redis;
+
+/** Atomically claims `key` for `ttlSeconds`; false when somebody already did. Needs Redis (see canClaim). */
+export async function claimOnce(key: string, ttlSeconds: number): Promise<boolean> {
+	if (!redis) throw new Error('Upstash Redis is not configured');
+	return (await redis.set(key, '1', { nx: true, ex: ttlSeconds })) === 'OK';
+}
+
+/** Gives a claim back, e.g. when sending failed and the next run should try again. */
+export async function releaseClaim(key: string) {
+	await redis?.del(key).catch((e) => console.error('release failed', e));
 }

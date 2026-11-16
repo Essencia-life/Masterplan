@@ -94,6 +94,28 @@ npm run test       # vitest: pure functions in time, calendar-id, server/parse
 npm run build
 ```
 
+## Welcome mails
+
+Guests and volunteers get a welcome mail a few days before they arrive. A daily Vercel cron (`vercel.json`, 08:00 UTC) calls `/api/cron/welcome`, which
+
+- looks at all confirmed bookings in calendars that support participants (name contains "guest" or "volunteer") starting within the template's "days before" window,
+- sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_SENDER`,
+- remembers every sent mail in Redis (`welcome:<event>:<email>`, 120 days) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
+
+Calendars with "volunteer" in the group or calendar name use `volunteer-welcome`, all other participant calendars `guest-welcome`. Unconfirmed bookings get nothing.
+
+**Texts and attachments** are maintained in Sveltia CMS (open `/admin/` on the deployed site; `static/admin/config.yml`, backend GitHub). One entry per slug (`guest-welcome`, `volunteer-welcome`; add more in the config and in `templateSlugFor`): subject, days before, message (simple Markdown: bold, italic, links, lists, `##` heading) and PDF attachments. The editor has two components for the placeholders `{{name}}` and `{{arrival}}`, which are replaced per guest. The files live in `content/mail/*.json` and `content/mail/files/*.pdf`; they are read at build time, so a change goes live with the next deployment, and the PDFs are not public.
+
+**Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): forest header with the "essência" wordmark, terra accent, parchment background. Gmail ignores web fonts, the serif falls back to Georgia. There is no logo image in the repo; replace the header text by an `<mj-image>` once there is a PNG.
+
+Setup:
+
+1. Admin console, domain-wide delegation: add the scope `https://www.googleapis.com/auth/gmail.send` to the service account's client ID. Enable the Gmail API in the Google Cloud project.
+2. Set `MAIL_SENDER` (a real Workspace mailbox, e.g. `welcome@essencia.life`; Gmail shows the mail as sent by it), optionally `MAIL_FROM_NAME`, and `CRON_SECRET`.
+3. Test: `curl -H "Authorization: Bearer $CRON_SECRET" "https://<site>/api/cron/welcome?test=you@example.org&template=guest-welcome"` sends one sample mail and records nothing.
+
+Sveltia needs an OAuth proxy for the GitHub login; set `base_url` in `static/admin/config.yml` (the one the website CMS uses).
+
 ## Routes
 
 | Route | Purpose |
@@ -116,7 +138,10 @@ npm run build
 | `src/lib/calendar.remote.ts` | remote functions (zod): `getEvents`, `getEvent`, `saveEvent`, `deleteEvent`, `resolveConflict`, `refreshRows` |
 | `src/lib/server/google.ts` | Google clients, row model (calendar list), event reads, auth helpers (service account vs. user) |
 | `src/lib/server/parse.ts` | pure functions: calendar/room name schemes, time zone helpers, event normalisation (unit tested) |
-| `src/lib/server/cache.ts` | Upstash/in-memory row cache |
+| `src/lib/server/cache.ts` | Upstash/in-memory row cache, send-once markers |
+| `src/lib/server/mail/` | welcome mails: templates (CMS content), Markdown subset, MJML layout, MIME, Gmail, the cron logic |
+| `src/routes/api/cron/welcome/` | the cron endpoint |
+| `content/mail/`, `static/admin/` | mail texts and PDFs, Sveltia CMS |
 | `src/lib/server/session.ts`, `oauth.ts` | encrypted cookie session, OAuth client |
 | `src/lib/timeline.svelte.ts` | `Timeline` state, one instance per page load via Svelte context (`setTimeline`/`getTimeline`): events per row, expanded groups, hidden rows, group order |
 | `src/lib/time.ts` | the app time zone, day maths (days since a base date), end-of-event rule shared by server and panel, moon phase, wall-clock minutes |

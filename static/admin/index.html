@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<title>Content Manager</title>
+		<link href="/admin/config.yml" type="text/yaml" rel="cms-config-url" />
+	</head>
+	<body>
+		<script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
+		<script>
+			// Placeholders for the mail text: inserted as {{name}} / {{arrival}}, replaced for every guest when the mail is sent
+			for (const [id, label] of [
+				['name', 'Guest name'],
+				['arrival', 'Arrival date']
+			]) {
+				CMS.registerEditorComponent({
+					id,
+					label,
+					fields: [],
+					pattern: new RegExp('^\\{\\{' + id + '\\}\\}$'),
+					fromBlock: () => ({}),
+					toBlock: () => '{{' + id + '}}',
+					toPreview: () => '{{' + id + '}}'
+				});
+			}
+		</script>
+	</body>
+</html>

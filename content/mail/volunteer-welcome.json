@@ -1,0 +1,6 @@
+{
+	"subject": "Welcome to Essência, volunteer",
+	"daysBefore": 3,
+	"message": "Dear {{name}},\n\nThank you for helping at Essência! Your volunteering starts on **{{arrival}}**.\n\nIf you have any questions before you come, just reply to this email.\n\nSee you soon,\nthe Essência team",
+	"attachments": []
+}

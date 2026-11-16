@@ -17,7 +17,7 @@ export { isResourceId, addDays, dayOf, eventRange, localDay, localTime, normaliz
  * or just the PEM private key ("-----BEGIN PRIVATE KEY-----", multi-line or with literal \\n)
  * together with GOOGLE_SERVICE_ACCOUNT_EMAIL.
  */
-function credentials() {
+export function credentials() {
 	let raw = env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
 	if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not set');
 	if (raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1);

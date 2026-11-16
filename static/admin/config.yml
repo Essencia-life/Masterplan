@@ -1,0 +1,40 @@
+# Sveltia CMS for the mail texts. Open /admin/ on the deployed site.
+backend:
+  name: github
+  repo: Essencia-life/Masterplan
+  branch: main
+  # base_url: https://<your OAuth proxy>   # the same proxy as for the website CMS
+
+# PDFs are stored in the repo (not in static/, so they are not public) and sent as attachments
+media_folder: content/mail/files
+public_folder: /content/mail/files
+
+collections:
+  - name: mail
+    label: Welcome mails
+    editor:
+      preview: false
+    files:
+      - name: guest-welcome
+        label: Guests
+        file: content/mail/guest-welcome.json
+        format: json
+        fields: &mail_fields
+          - { name: subject, label: Subject, widget: string, hint: 'Placeholders work here too: {{name}}, {{arrival}}' }
+          - { name: daysBefore, label: Days before arrival, widget: number, value_type: int, min: 0, max: 60, default: 3, hint: 'Sent this many days before the arrival; bookings made later get it at the next daily run' }
+          - name: message
+            label: Message
+            widget: markdown
+            buttons: [bold, italic, link, bulleted-list]
+            editor_components: [name, arrival]
+            hint: 'Use the + button to insert the guest name or the arrival date'
+          - name: attachments
+            label: Attachments (PDF only)
+            widget: list
+            required: false
+            field: { name: file, label: PDF, widget: file, accept: .pdf, required: true }
+      - name: volunteer-welcome
+        label: Volunteers
+        file: content/mail/volunteer-welcome.json
+        format: json
+        fields: *mail_fields

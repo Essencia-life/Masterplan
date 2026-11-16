@@ -26,6 +26,12 @@ export const variables = defineEnvVars({
 	// --- cache: Upstash Redis (set by the Vercel marketplace integration as KV_REST_API_*); optional, falls back to memory ---
 	KV_REST_API_URL: optional,
 	KV_REST_API_TOKEN: optional,
-	KV_REST_API_URL: optional,
-	KV_REST_API_TOKEN: optional
+
+	// --- welcome mails (Vercel cron → /api/cron/welcome → Gmail API) ---
+	/** Vercel sends it as "Authorization: Bearer <CRON_SECRET>" to cron routes; the route refuses everything else */
+	CRON_SECRET: optional,
+	/** Workspace mailbox (or alias owner) the service account sends as, e.g. welcome@essencia.life; needs the gmail.send delegation scope */
+	MAIL_SENDER: optional,
+	/** Display name of the sender, defaults to "Essência" */
+	MAIL_FROM_NAME: optional
 });
