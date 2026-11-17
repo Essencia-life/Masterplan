@@ -245,8 +245,15 @@
 	}
 
 	// ----- navigation -----
+	// Only the days of the window are rendered, so a far target has no snap points yet and snapping would pull the
+	// scroll back to the nearest rendered day. Snapping is paused while jumping and resumes when the target is there.
+	let jumping = $state(false);
+	let jumpTimer = 0;
 	function scrollToDay(d: number, smooth = true) {
+		jumping = true;
 		scroller?.scrollTo({ left: Math.max(0, (d - 2) * DAYW), behavior: smooth ? 'smooth' : 'instant' });
+		clearTimeout(jumpTimer);
+		jumpTimer = window.setTimeout(() => (jumping = false), smooth ? 1500 : 150);
 	}
 	const go = (weeks: number) => scroller?.scrollBy({ left: weeks * 7 * DAYW, behavior: 'smooth' });
 
@@ -330,7 +337,7 @@
 			onpointercancel={onCancel}
 			oncontextmenu={(e) => (pressTimer || drag) && e.preventDefault()}
 			style:user-select={drag ? 'none' : undefined}
-			style:scroll-snap-type={drag ? 'none' : undefined}
+			style:scroll-snap-type={drag || jumping ? 'none' : undefined}
 			style:-webkit-touch-callout="none"
 		>
 			<div bind:this={board} class="relative" style="width:{LABW + N_DAYS * DAYW}px">
