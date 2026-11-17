@@ -116,7 +116,7 @@ Setup:
 2. Set `MAIL_SENDER` (a real Workspace mailbox, e.g. `welcome@essencia.life`; Gmail shows the mail as sent by it), optionally `MAIL_FROM_NAME`, and `CRON_SECRET`.
 3. Test: `curl -H "Authorization: Bearer $CRON_SECRET" "https://<site>/api/cron/welcome?test=you@example.org&template=guest-welcome"` sends one sample mail and records nothing.
 
-Sveltia needs an OAuth proxy for the GitHub login; set `base_url` in `static/admin/config.yml` (the one the website CMS uses).
+The GitHub login for Sveltia runs on this site (`src/routes/admin/auth`, copied from the website repo). Create a GitHub OAuth app with callback URL `https://<site>/admin/auth/callback` and set `CMS_GITHUB_CLIENT_ID` / `CMS_GITHUB_CLIENT_SECRET`. Editors need write access to this repo.
 
 ## Routes
 

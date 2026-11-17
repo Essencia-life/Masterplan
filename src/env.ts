@@ -41,5 +41,9 @@ export const variables = defineEnvVars({
 	/** sent as x-secret-token header; the same value the Orga app checks against its ORGA_INVITE_SECRET_TOKEN */
 	ORGA_INVITE_SECRET_TOKEN: optional,
 	/** used when the endpoint is not set or fails */
-	MAIL_TELEGRAM_FALLBACK_URL: optional
+	MAIL_TELEGRAM_FALLBACK_URL: optional,
+
+	// --- Sveltia CMS login at /admin (GitHub OAuth app, callback URL: <site>/admin/auth/callback) ---
+	CMS_GITHUB_CLIENT_ID: optional,
+	CMS_GITHUB_CLIENT_SECRET: optional
 });

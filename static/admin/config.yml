@@ -3,7 +3,8 @@ backend:
   name: github
   repo: Essencia-life/Masterplan
   branch: main
-  # base_url: https://<your OAuth proxy>   # the same proxy as for the website CMS
+  # login via src/routes/admin/auth; base_url (= this origin) is set in index.html
+  auth_endpoint: /admin/auth
 
 # PDFs are stored in the repo (not in static/, so they are not public) and sent as attachments
 media_folder: content/mail/files

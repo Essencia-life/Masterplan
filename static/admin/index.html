@@ -9,6 +9,7 @@
 		<link rel="stylesheet" href="./editor.css">
 	</head>
 	<body>
+		<script>window.CMS_MANUAL_INIT = true;</script>
 		<script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
 		<script>
 			// Placeholders for the mail text: inserted as {{name}} / {{arrival}} / {{departure}}, replaced for every guest when the mail is sent
@@ -29,6 +30,8 @@
 					toPreview: () => '{{' + id + '}}'
 				});
 			}
+			// GitHub login endpoints live on this site; merged with config.yml
+			CMS.init({ config: { backend: { base_url: location.origin } } });
 		</script>
 	</body>
 </html>
