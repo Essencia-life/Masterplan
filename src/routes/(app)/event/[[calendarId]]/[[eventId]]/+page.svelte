@@ -415,7 +415,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					{/if}
 					<div>
 						<Label for="f-status" class="mb-1">Status</Label>
-						<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Tentative' }]} bind:value={form.status} />
+						<Select id="f-status" items={[{ value: 'confirmed', name: 'Confirmed' }, { value: 'tentative', name: 'Unconfirmed' }]} bind:value={form.status} />
 					</div>
 						<div class="space-y-2">
 							<Label for="f-rep" class="mb-1">Repeat</Label>

@@ -240,7 +240,7 @@
 		}
 		const rooms = (linkCount.get(it.ev.linkId) ?? 1) - 1;
 		const declined = (it.ev.declinedRooms ?? []).map((id) => timeline.meta?.rows.find((r) => r.id === id)?.label ?? id);
-		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · tentative' : ''}${declined.length ? ` · declined: ${declined.join(', ')}` : ''}${it.ev.description.trim() ? ' · has note' : ''}`;
+		const text = `${it.ev.title} · ${range}${rooms > 0 ? ` · +${rooms} linked` : ''}${it.ev.status === 'tentative' ? ' · unconfirmed' : ''}${declined.length ? ` · declined: ${declined.join(', ')}` : ''}${it.ev.description.trim() ? ' · has note' : ''}`;
 		tip = { text, x: Math.min(e.clientX + 12, innerWidth - 260), y: e.clientY + 16 };
 	}
 
@@ -322,7 +322,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			bind:this={scroller}
-			class="min-w-0 flex-1 overflow-auto overscroll-x-contain bg-surface"
+			class="min-w-0 flex-1 snap-x snap-mandatory scroll-pl-(--label-w) overflow-auto overscroll-x-contain bg-surface"
 			onscroll={onScroll}
 			onpointerdown={onDown}
 			onpointermove={onMove}
@@ -330,6 +330,7 @@
 			onpointercancel={onCancel}
 			oncontextmenu={(e) => (pressTimer || drag) && e.preventDefault()}
 			style:user-select={drag ? 'none' : undefined}
+			style:scroll-snap-type={drag ? 'none' : undefined}
 			style:-webkit-touch-callout="none"
 		>
 			<div bind:this={board} class="relative" style="width:{LABW + N_DAYS * DAYW}px">
@@ -339,7 +340,7 @@
 						<div class="sticky left-0 z-10 shrink-0 bg-surface border-r border-line" style="width:{LABW}px"></div>
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each months as m (m.key)}
-								<div class="absolute top-0 h-full overflow-clip border-l border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
+								<div class="absolute top-0 h-full overflow-clip border-l-2 border-b border-line" style="left:{m.s * DAYW}px;width:{(m.e - m.s) * DAYW}px">
 									<span class="sticky inline-block whitespace-nowrap px-2 font-display text-[15px] font-bold leading-[28px]" style="left:{LABW}px">{m.label}</span>
 								</div>
 							{/each}
@@ -350,9 +351,10 @@
 						<div class="relative" style="width:{N_DAYS * DAYW}px">
 							{#each days as d (d)}
 								<div
-									class="absolute top-0 flex h-full flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
+									class="absolute top-0 flex h-full snap-start flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
 									class:weekend={isWeekend(d)}
 									class:month-start={dom(d) === 1}
+									class:snap-always={dom(d) === 1}
 									class:today={d === TODAY}
 									style="left:{d * DAYW}px;width:{DAYW}px"
 								>
@@ -384,7 +386,7 @@
 				<div class="pointer-events-none absolute bottom-0 z-0" style="top:104px;left:{LABW}px;width:{N_DAYS * DAYW}px;background-image:linear-gradient(to right, var(--app-line-soft) 1px, transparent 1px);background-size:{DAYW}px 100%">
 					{#each days as d (d)}
 						{#if dom(d) === 1}
-							<div class="absolute top-0 h-full border-l border-line" style="left:{d * DAYW}px"></div>
+							<div class="absolute top-0 h-full border-l-2 border-line" style="left:{d * DAYW}px"></div>
 						{/if}
 						{#if isWeekend(d) || d === TODAY}
 							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === TODAY ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
@@ -507,6 +509,7 @@
 		box-shadow: inset 0 -3px 0 var(--app-accent);
 	}
 	.month-start {
+		border-left-width: 2px;
 		border-left-color: var(--app-line);
 	}
 	.weekend {
