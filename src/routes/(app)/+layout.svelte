@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { fly, slide } from 'svelte/transition';
 	import { Button, Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 	import type { LayoutProps } from './$types';
@@ -249,18 +249,18 @@
 	// scroll back to the nearest rendered day. Snapping is paused while jumping and resumes when the target is there.
 	let jumping = $state(false);
 	let jumpTimer = 0;
-	function scrollToDay(d: number, smooth = true) {
+	async function scrollToDay(d: number, smooth = true) {
 		jumping = true;
+		await tick(); // snapping has to be off in the DOM before the scroll starts
 		scroller?.scrollTo({ left: Math.max(0, (d - 2) * DAYW), behavior: smooth ? 'smooth' : 'instant' });
 		clearTimeout(jumpTimer);
-		jumpTimer = window.setTimeout(() => (jumping = false), smooth ? 1500 : 150);
+		jumpTimer = window.setTimeout(() => (jumping = false), smooth ? 1500 : 400);
 	}
 	const go = (weeks: number) => scroller?.scrollBy({ left: weeks * 7 * DAYW, behavior: 'smooth' });
 
 	onMount(() => {
 		timeline.restore();
-		scrollToDay(TODAY, false);
-		scrollX = scroller!.scrollLeft;
+		void scrollToDay(TODAY, false).then(() => (scrollX = scroller?.scrollLeft ?? 0));
 		const ro = new ResizeObserver(() => (viewW = scroller!.clientWidth));
 		ro.observe(scroller!);
 		viewW = scroller!.clientWidth;
