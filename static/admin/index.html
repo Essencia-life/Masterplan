@@ -29,7 +29,7 @@
 					toPreview: () => '{{' + id + '}}'
 				});
 			}
-			// Mail texts: one file per slug, same fields. PDFs go into the repo (not static/, so they are not public).
+			// Mail texts: one file per mail, same fields. PDFs go into the repo (not static/, so they are not public).
 			const fields = [
 				{
 					"name": "subject",
@@ -113,14 +113,16 @@
 					collections: [
 						{
 							name: 'mail',
-							label: 'Welcome mails',
+							label: 'Mails',
+							description: 'File names must start with guest- or volunteer-, other files are ignored. Rename new entries accordingly.',
 							editor: { preview: false },
-							files: [
-								['guest-welcome', 'Guests, welcome'],
-								['guest-thanks', 'Guests, thank you'],
-								['volunteer-welcome', 'Volunteers, welcome'],
-								['volunteer-thanks', 'Volunteers, thank you']
-							].map(([name, label]) => ({ name, label, file: `content/mail/${name}.json`, format: 'json', fields }))
+							// the file name is the slug; guest-… / volunteer-… decides who gets the mail
+							folder: 'content/mail',
+							extension: 'json',
+							format: 'json',
+							create: true,
+							identifier_field: 'subject',
+							fields
 						}
 					]
 				}
