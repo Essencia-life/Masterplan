@@ -16,6 +16,11 @@ describe('markdownToHtml', () => {
 		expect(markdownToHtml('[site](https://essencia.life/a?b=1&c=2)')).toBe('<p><a href="https://essencia.life/a?b=1&amp;c=2">site</a></p>');
 		expect(markdownToHtml('[x](javascript:alert(1))')).toBe('<p>x</p>');
 	});
+	it('turns link placeholders into links, bare or as the target', () => {
+		expect(markdownToHtml('Join: {{telegramJoinLink}}')).toBe('<p>Join: <a href="{{telegramJoinLink}}">{{telegramJoinLink}}</a></p>');
+		expect(markdownToHtml('[Join us]({{telegramJoinLink}})')).toBe('<p><a href="{{telegramJoinLink}}">Join us</a></p>');
+		expect(markdownToHtml('[x]({{name}})')).toBe('<p>x</p>');
+	});
 	it('keeps placeholders for fill()', () => {
 		expect(markdownToHtml('Dear {{name}}')).toBe('<p>Dear {{name}}</p>');
 	});

@@ -3,6 +3,7 @@ import { claimOnce, canClaim, releaseClaim } from '#lib/server/cache';
 import { addDays, eventRange, loadMeta, resolveCalendarId, serviceCalendar, withBackoff } from '#lib/server/google';
 import { renderLayout } from './layout';
 import { sendRaw, sender } from './gmail';
+import { feedbackLink, telegramJoinLink } from './links';
 import { escapeHtml, fill, markdownToHtml, markdownToText } from './markdown';
 import { buildMime } from './mime';
 import { CATCH_UP_DAYS, isDue } from './timing';
@@ -24,19 +25,24 @@ type Compiled = Awaited<ReturnType<typeof compile>>;
 
 type Dates = { arrival: string; departure: string };
 
-async function deliver(c: Compiled, to: Participant, d: Dates) {
-	const vars = { name: to.name, arrival: longDate(d.arrival), departure: longDate(d.departure) };
+const uses = (c: Compiled, key: string) => new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`).test(c.t.message + c.t.subject);
+
+async function deliver(c: Compiled, to: Participant, d: Dates, role: 'guest' | 'volunteer') {
+	const vars: Record<string, string> = { name: to.name, arrival: longDate(d.arrival), departure: longDate(d.departure) };
+	// links are only fetched for templates that contain them (the endpoint may create a personal invite)
+	if (uses(c, 'feedbackLink')) vars.feedbackLink = feedbackLink();
+	if (uses(c, 'telegramJoinLink')) vars.telegramJoinLink = await telegramJoinLink({ name: to.name, departure: d.departure, role });
 	const escaped = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, escapeHtml(v)]));
 	await sendRaw(
 		buildMime({ from: sender(), to: { name: to.name, email: to.email }, subject: fill(c.t.subject, vars), text: fill(c.text, vars), html: fill(c.html, escaped), attachments: c.t.attachments })
 	);
 }
 
-/** One sample mail to `to` (arrival and departure are made up), nothing is claimed or recorded. */
+/** One sample mail to `to` (arrival and departure are made up), nothing is claimed or recorded. Links are fetched like for real mails. */
 export async function sendTest(slug: string, to: string) {
 	const c = await compile(getTemplate(slug));
 	const day = new Date().toISOString().slice(0, 10);
-	await deliver(c, { name: 'Test Guest', email: to }, { arrival: addDays(day, 3), departure: addDays(day, 10) });
+	await deliver(c, { name: 'Test Guest', email: to }, { arrival: addDays(day, 3), departure: addDays(day, 10) }, slug.startsWith('volunteer-') ? 'volunteer' : 'guest');
 }
 
 /**
@@ -95,7 +101,7 @@ export async function sendWelcomes(today: string) {
 						continue;
 					}
 					try {
-						await deliver(c, person, { arrival: first, departure: last });
+						await deliver(c, person, { arrival: first, departure: last }, kind);
 						result.sent++;
 					} catch (err) {
 						await releaseClaim(key);

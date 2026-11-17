@@ -33,5 +33,12 @@ export const variables = defineEnvVars({
 	/** Workspace mailbox (or alias owner) the service account sends as, e.g. welcome@essencia.life; needs the gmail.send delegation scope */
 	MAIL_SENDER: optional,
 	/** Display name of the sender, defaults to "Essência" */
-	MAIL_FROM_NAME: optional
+	MAIL_FROM_NAME: optional,
+	/** {{feedbackLink}} in the mail texts */
+	MAIL_FEEDBACK_URL: optional,
+	/** {{telegramJoinLink}}: endpoint that returns the link (GET ?name=&departure=YYYY-MM-DD&role=guest|volunteer, secret as Bearer token) */
+	MAIL_TELEGRAM_ENDPOINT: optional,
+	MAIL_TELEGRAM_TOKEN: optional,
+	/** used when the endpoint is not set or fails */
+	MAIL_TELEGRAM_FALLBACK_URL: optional
 });
