@@ -5,7 +5,6 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="robots" content="noindex" />
 		<title>Content Manager</title>
-		<link href="/admin/config.yml" type="text/yaml" rel="cms-config-url" />
 		<link rel="stylesheet" href="./editor.css">
 	</head>
 	<body>
@@ -30,8 +29,102 @@
 					toPreview: () => '{{' + id + '}}'
 				});
 			}
-			// GitHub login endpoints live on this site; merged with config.yml
-			CMS.init({ config: { backend: { base_url: location.origin } } });
+			// Mail texts: one file per slug, same fields. PDFs go into the repo (not static/, so they are not public).
+			const fields = [
+				{
+					"name": "subject",
+					"label": "Subject",
+					"widget": "string",
+					"hint": "Placeholders work here too: {{name}}, {{arrival}}, {{departure}}"
+				},
+				{
+					"name": "timing",
+					"label": "Send",
+					"widget": "object",
+					"hint": "Bookings made later get the mail at the next daily run; a mail more than a week overdue is not sent",
+					"fields": [
+						{
+							"name": "days",
+							"label": "Days",
+							"widget": "number",
+							"value_type": "int",
+							"min": 0,
+							"max": 60,
+							"default": 3
+						},
+						{
+							"name": "when",
+							"label": "When",
+							"widget": "select",
+							"options": [
+								{
+									"label": "before arrival",
+									"value": "before"
+								},
+								{
+									"label": "after departure",
+									"value": "after"
+								}
+							],
+							"default": "before"
+						}
+					]
+				},
+				{
+					"name": "message",
+					"label": "Message",
+					"widget": "markdown",
+					"buttons": [
+						"bold",
+						"italic",
+						"link",
+						"bulleted-list"
+					],
+					"editor_components": [
+						"name",
+						"arrival",
+						"departure",
+						"telegramJoinLink",
+						"feedbackLink"
+					],
+					"hint": "Use the + button to insert the guest name, the arrival / departure date, the Telegram join link or the feedback page link"
+				},
+				{
+					"name": "attachments",
+					"label": "Attachments (PDF only)",
+					"widget": "list",
+					"required": false,
+					"field": {
+						"name": "file",
+						"label": "PDF",
+						"widget": "file",
+						"accept": ".pdf",
+						"required": true
+					}
+				}
+			];
+			CMS.init({
+				config: {
+					load_config_file: false,
+					// login endpoints live on this site: src/routes/admin/auth
+					backend: { name: 'github', repo: 'Essencia-life/Masterplan', branch: 'main', base_url: location.origin, auth_endpoint: '/admin/auth' },
+					media_folder: 'content/mail/files',
+					public_folder: '/content/mail/files',
+					collections: [
+						{
+							name: 'mail',
+							label: 'Welcome mails',
+							editor: { preview: false },
+							files: [
+								['guest-welcome', 'Guests, welcome'],
+								['guest-thanks', 'Guests, thank you'],
+								['volunteer-welcome', 'Volunteers, welcome'],
+								['volunteer-thanks', 'Volunteers, thank you']
+							].map(([name, label]) => ({ name, label, file: `content/mail/${name}.json`, format: 'json', fields }))
+						}
+					]
+				}
+			});
 		</script>
 	</body>
 </html>

@@ -2,7 +2,7 @@ import * as z from 'zod';
 import type { Attachment } from './mime';
 
 /**
- * Welcome mail texts, maintained in Sveltia CMS (static/admin/config.yml) as content/mail/<slug>.json
+ * Welcome mail texts, maintained in Sveltia CMS (static/admin/index.html) as content/mail/<slug>.json
  * and PDFs in content/mail/files/. Both are read at build time and end up in the server bundle, so a
  * change in the CMS (a commit) goes live with the next deployment, and the PDFs are not public.
  */
