@@ -6,6 +6,7 @@
 		<meta name="robots" content="noindex" />
 		<title>Content Manager</title>
 		<link href="/admin/config.yml" type="text/yaml" rel="cms-config-url" />
+		<link rel="stylesheet" href="./editor.css">
 	</head>
 	<body>
 		<script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
@@ -14,7 +15,9 @@
 			for (const [id, label] of [
 				['name', 'Guest name'],
 				['arrival', 'Arrival date'],
-				['departure', 'Departure date']
+				['departure', 'Departure date'],
+				['telegramJoinLink', 'Telegram join link'],
+				['feedbackLink', 'Feedback page link']
 			]) {
 				CMS.registerEditorComponent({
 					id,

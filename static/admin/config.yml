@@ -36,8 +36,8 @@ collections:
             label: Message
             widget: markdown
             buttons: [bold, italic, link, bulleted-list]
-            editor_components: [name, arrival, departure]
-            hint: 'Use the + button to insert the guest name or the arrival / departure date'
+            editor_components: [name, arrival, departure, telegramJoinLink, feedbackLink]
+            hint: 'Use the + button to insert the guest name, the arrival / departure date, the Telegram join link or the feedback page link'
           - name: attachments
             label: Attachments (PDF only)
             widget: list

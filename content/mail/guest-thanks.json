@@ -1,9 +1,9 @@
 {
-	"subject": "Thank you for your visit",
-	"timing": {
-		"days": 1,
-		"when": "after"
-	},
-	"message": "Dear {{name}},\n\nThank you for staying with us until **{{departure}}**. It was a pleasure to have you at Essência.\n\nWe would love to hear how it was for you, just reply to this email.\n\nWarm wishes,\nthe Essência team",
-	"attachments": []
+  "subject": "Thank you for your visit",
+  "timing": {
+    "days": 1,
+    "when": "after"
+  },
+  "message": "Dear {{name}},\n\nThank you for staying with us. It was a pleasure to have you at Essência.\n\nWe would love to hear how it was for you, please write us a review:\n{{feedbackLink}}\n\nWarm wishes,\nthe Essência team",
+  "attachments": []
 }
