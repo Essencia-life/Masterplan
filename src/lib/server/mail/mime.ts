@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export type Attachment = { filename: string; content: Buffer; type: string };
 /** An image the HTML refers to as <img src="cid:…"> */
-export type Inline = { cid: string; content: Buffer; type: string };
+export type Inline = { cid: string; filename: string; content: Buffer; type: string };
 type Address = { name?: string; email: string };
 
 const wrap = (b64: string) => (b64.match(/.{1,76}/g) ?? []).join('\r\n');
@@ -41,9 +41,11 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 				'',
 				...alternative,
 				`--${rel}`,
-				`Content-Type: ${m.inline.type}`,
+				`Content-Type: ${m.inline.type}; name="${m.inline.filename}"`,
 				`Content-ID: <${m.inline.cid}>`,
-				'Content-Disposition: inline',
+				// like Gmail's own mails: with a name and an attachment id it keeps the image in the body instead of listing it
+				`X-Attachment-Id: ${m.inline.cid}`,
+				`Content-Disposition: inline; filename="${m.inline.filename}"`,
 				'Content-Transfer-Encoding: base64',
 				'',
 				b64(m.inline.content),
