@@ -7,6 +7,7 @@
 	import { Badge, Button, ButtonGroup, Checkbox, CloseButton, Dropdown, DropdownItem, Input, Label, Select, Spinner, TabItem, Tabs, Textarea, Toggle } from 'flowbite-svelte';
 	import { deleteEvent, getEvent, resolveConflict, saveEvent } from '#lib/calendar.remote';
 	import { calendarIdFromSlug } from '#lib/calendar-id';
+	import { overlaps as overlapsSpan, spanOf } from '#lib/conflicts';
 	import { getTimeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
@@ -236,11 +237,6 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	// exclusive end day, same rule as the timeline bars: a timed event ending exactly at 00:00 does not occupy that day
 	const eD = $derived(!form.end ? 0 : isoToDay(exclusiveEndIso(form.start, form.end, form.allDay ? null : form.endTime)));
 	type Conflict = { key: string; rid: string; label: string; ev: CalEvent };
-	/** time span in wall-clock minutes: exact for timed events, whole days for all-day ones */
-	const spanOf = (e: CalEvent): [number, number] =>
-		e.fromLocal && e.toLocal
-			? [toMinutes(e.fromLocal.slice(0, 10), e.fromLocal.slice(11)), toMinutes(e.toLocal.slice(0, 10), e.toLocal.slice(11))]
-			: [isoToDay(e.start) * 1440, isoToDay(e.end) * 1440];
 	const formSpan = $derived<[number, number]>(
 		!form.start || !form.end
 			? [0, 0]
@@ -248,10 +244,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				? [isoToDay(form.start) * 1440, (isoToDay(form.end) + 1) * 1440]
 				: [toMinutes(form.start, form.startTime), toMinutes(form.end, form.endTime)]
 	);
-	const overlaps = (e: CalEvent) => {
-		const [a, b] = spanOf(e);
-		return a < formSpan[1] && b > formSpan[0];
-	};
+	const overlaps = (e: CalEvent) => overlapsSpan(e, formSpan);
 	const timeLabel = (e: CalEvent) => (e.fromLocal && e.toLocal ? ` ${e.fromLocal.slice(11)}–${e.toLocal.slice(11)}` : '');
 	const isSelf = (e: CalEvent) => e.id === form.id || (!!form.linkId && e.linkId === form.linkId);
 	const conflicts = $derived.by(() => {
@@ -346,6 +339,11 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined } : {})
 			});
 			timeline.applyFresh(res.fresh);
+			if ('conflict' in res) {
+				// the rooms were booked meanwhile: nothing was saved, the Conflicts tab lists the bookings in the way
+				tab = 'conflicts';
+				return;
+			}
 			// no conflicts: show the room bookings right away as tentative, Google mirrors them a moment later
 			if (!conflicts.length) {
 				const pending = form.resourceIds.filter((rid) => !res.fresh.rows[rid]?.some((e) => e.linkId === res.linkId));
