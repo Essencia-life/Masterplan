@@ -21,7 +21,8 @@ import {
 } from '#lib/server/google';
 import { DAY_MS, TIME_ZONE, addDaysIso } from '#lib/time';
 import { buildRecurrence, linesBefore, linesFrom, parseRecurrence, repeatSchema } from '#lib/recurrence';
-import { fromAttendees, participantsSchema, supportsParticipants, toAttendee } from '#lib/participants';
+import { fromAttendees, participantKind, participantsSchema, supportsParticipants, toAttendee } from '#lib/participants';
+import { mailSent } from '#lib/server/mail/timings';
 import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -68,6 +69,10 @@ export const getEvent = query(
 				const { repeat, custom } = parseRecurrence(master.recurrence ?? [], master.extendedProperties?.private?.repeat);
 				const start = dayOf(ev.start);
 				const allDay = !!ev.start?.date;
+				const people = fromAttendees(ev.attendees);
+				const groupLabel = meta.groups.find((g) => g.id === meta.rows.find((r) => r.id === ownerRow)?.groupId)?.label ?? '';
+				const rowLabel = meta.rows.find((r) => r.id === ownerRow)?.label ?? '';
+				const sent = supportsParticipants(groupLabel, rowLabel) ? await mailSent(participantKind(groupLabel, rowLabel), ev.id!, people.map((p) => p.email)) : {};
 				const end = allDay ? ev.end!.date! : localDay(ev.end?.dateTime ?? ev.start?.dateTime);
 				return {
 					id: ev.id!,
@@ -83,7 +88,8 @@ export const getEvent = query(
 					endTime: allDay ? '' : localTime(ev.end!.dateTime!),
 					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!),
 					jobs: parseJobs(ev.extendedProperties?.private?.jobs),
-					participants: fromAttendees(ev.attendees),
+					participants: people,
+					mailSent: sent,
 					type: ev.extendedProperties?.private?.type ?? '',
 					seriesId: ev.recurringEventId ?? (ev.recurrence?.length ? ev.id! : ''),
 					repeat,

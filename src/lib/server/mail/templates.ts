@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import type { Attachment } from './mime';
+import { timingSchema } from './timing';
 
 /**
  * Welcome mail texts, maintained in Sveltia CMS (static/admin/index.html) as content/mail/<slug>.json
@@ -15,10 +16,7 @@ const MAX_ATTACHMENTS_BYTES = 20 * 1024 * 1024; // Gmail's limit is 25 MB per me
 const templateSchema = z.object({
 	subject: z.string().trim().min(1, 'subject is empty'),
 	message: z.string().trim().min(1, 'message is empty'),
-	/** when to send: `days` before the arrival or after the departure (bookings made later get it with the next run) */
-	timing: z
-		.object({ days: z.number().int().min(0).max(60), when: z.enum(['before', 'after']) })
-		.default({ days: 3, when: 'before' }),
+	timing: timingSchema,
 	attachments: z.array(z.string()).default([])
 });
 

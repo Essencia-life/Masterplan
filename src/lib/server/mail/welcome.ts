@@ -1,4 +1,4 @@
-import { fromAttendees, supportsParticipants, type Participant } from '#lib/participants';
+import { fromAttendees, participantKind, supportsParticipants, type Participant } from '#lib/participants';
 import { claimOnce, canClaim, releaseClaim } from '#lib/server/cache';
 import { addDays, eventRange, loadMeta, resolveCalendarId, serviceCalendar, withBackoff } from '#lib/server/google';
 import { renderLayout } from './layout';
@@ -7,11 +7,9 @@ import { sendRaw, sender } from './gmail';
 import { feedbackLink, telegramJoinLink } from './links';
 import { escapeHtml, fill, markdownToHtml, markdownToText } from './markdown';
 import { buildMime } from './mime';
+import { mailKey } from './timings';
 import { CATCH_UP_DAYS, isDue } from './timing';
 import { getTemplate, TEMPLATE_SLUGS, type MailTemplate } from './templates';
-
-/** Templates are named "<kind>-<what>" (guest-welcome, volunteer-thanks, …); calendars with "volunteer" in the group or calendar name are volunteers, all other participant calendars guests. */
-export const kindOf = (groupLabel: string, calendarLabel: string) => (/volunteer/i.test(`${groupLabel} ${calendarLabel}`) ? 'volunteer' : 'guest');
 
 const MAX_PER_RUN = 40; // keeps a run inside the function time limit; the rest follows with the next run
 const CLAIM_DAYS = 120;
@@ -68,7 +66,7 @@ export async function sendWelcomes(today: string) {
 	};
 
 	for (const row of rows) {
-		const kind = kindOf(groupLabel(row.groupId), row.label);
+		const kind = participantKind(groupLabel(row.groupId), row.label);
 		const templates: Compiled[] = [];
 		for (const slug of TEMPLATE_SLUGS.filter((s) => s.startsWith(`${kind}-`))) {
 			const c = await templateFor(slug);
@@ -98,7 +96,7 @@ export async function sendWelcomes(today: string) {
 				if (!isDue(c.t.timing, today, first, last)) continue;
 				for (const person of fromAttendees(e.attendees)) {
 					if (result.sent >= MAX_PER_RUN) return result;
-					const key = `mail:${c.t.slug}:${e.id}:${person.email.toLowerCase()}`;
+					const key = mailKey(c.t.slug, e.id, person.email);
 					if (!(await claimOnce(key, CLAIM_DAYS * 86400))) {
 						result.skipped++;
 						continue;

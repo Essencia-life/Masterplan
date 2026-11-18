@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import type { PageProps } from './$types';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import { ChevronDown } from '@lucide/svelte';
@@ -9,11 +10,12 @@
 	import { getTimeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
-import { newParticipant, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
+import { newParticipant, participantKind, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
 import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
 	import { MOON_PHASES, MOON_RELATIONS } from '#lib/moon';
 	import { moonDates, type Repeat } from '#lib/recurrence';
 
+	let { data }: PageProps = $props();
 	const timeline = getTimeline();
 
 	const eventId = $derived(page.params.eventId);
@@ -59,6 +61,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	let jobsBase = $state(JSON.stringify([[], '']));
 	/** participants as loaded, to tell whether the tab was touched */
 	let partsBase = $state('[]');
+	/** which mails were sent to whom (lower-case email -> mail -> time) */
+	let mailSent = $state<EventDetail['mailSent']>({});
 	let tab = $state<'details' | 'resources' | 'participants' | 'jobs' | 'conflicts'>('details');
 	let resolving = $state<string | null>(null);
 	let moveTo = $state<Record<string, string>>({});
@@ -79,6 +83,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		const sp = page.url.searchParams;
 		loadError = saveError = null;
 		loading = !!id;
+		mailSent = {};
 		if (id) {
 			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
@@ -91,6 +96,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					repBase = JSON.stringify(loaded);
 					jobsBase = JSON.stringify([e.jobs, e.type]);
 					partsBase = JSON.stringify(e.participants);
+					mailSent = e.mailSent;
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
 				.finally(() => id === eventId && (loading = false));
@@ -201,6 +207,26 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	const partsEnabled = $derived.by(() => {
 		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
 		return !!r && supportsParticipants(groupLabel(r.groupId), r.label);
+	});
+	const mailName = (name: string) => (name === 'thanks' ? 'thank-you' : name);
+	/** "welcome: sent 18 Nov, 12:30 · thank-you: not sent" for a person who is already on the saved event */
+	function sentLine(email: string) {
+		const mails = mailSent[email.trim().toLowerCase()];
+		if (!mails) return '';
+		return Object.entries(mails)
+			.map(([name, at]) => `${mailName(name)}: ${at === null ? 'not sent' : at ? `sent ${new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'sent'}`)
+			.join(' · ');
+	}
+	/** "a welcome mail 7 days before arrival and a thank-you mail 1 day after departure", from the CMS texts */
+	const mailHint = $derived.by(() => {
+		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
+		if (!r) return '';
+		const parts = data.mails[participantKind(groupLabel(r.groupId), r.label)].map((m) => {
+			const what = m.when === 'before' ? 'arrival' : 'departure';
+			const when = m.days === 0 ? `on the day of ${what}` : `${m.days} day${m.days === 1 ? '' : 's'} ${m.when} ${what}`;
+			return `a ${mailName(m.name)} mail ${when}`;
+		});
+		return parts.length ? `Each person gets ${parts.join(' and ')}.` : '';
 	});
 	const partsError = $derived(partsEnabled ? participantsProblem(form.participants) : null);
 	const partsDirty = $derived(JSON.stringify(form.participants) !== partsBase);
@@ -495,12 +521,14 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			</TabItem>
 			{#if partsEnabled}
 				<TabItem key="participants" title="People ({form.participants.length})">
+					{#if mailHint}<p class="text-sm text-muted">{mailHint}</p>{/if}
 					{#each form.participants as p, i (i)}
 						<div class="flex items-center gap-2">
 							<Input class="min-w-0 flex-1" placeholder="Name" aria-label="Name" bind:value={p.name} />
 							<Input class="min-w-0 flex-1" type="email" placeholder="Email" aria-label="Email" bind:value={p.email} />
 							<CloseButton aria-label="Remove person" onclick={() => form.participants.splice(i, 1)} />
 						</div>
+						{#if sentLine(p.email)}<p class="-mt-1 text-xs text-muted">{sentLine(p.email)}</p>{/if}
 					{/each}
 					<Button size="xs" color="alternative" onclick={() => form.participants.push(newParticipant())}>Add person</Button>
 					{#if partsError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{partsError}</p>{/if}
