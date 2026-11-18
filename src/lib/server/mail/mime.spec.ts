@@ -39,6 +39,16 @@ describe('buildMime', () => {
 		expect(raw).toContain("filename*=UTF-8''How%20to%20get%20to%20Essencia.pdf");
 	});
 
+	it('lists the PDFs before the inline logo', () => {
+		const raw = buildMime({
+			...base,
+			subject: 'Hello',
+			attachments: [{ filename: 'a.pdf', content: Buffer.from('x'), type: 'application/pdf' }],
+			inline: { cid: 'logo@x', filename: 'logo.png', content: Buffer.from('y'), type: 'image/png' }
+		});
+		expect(raw.indexOf('name="a.pdf"')).toBeLessThan(raw.indexOf('name="logo.png"'));
+	});
+
 	it('keeps line breaks in the subject out of the headers', () => {
 		const raw = buildMime({ ...base, subject: 'Hi\r\nBcc: evil@example.org' });
 		expect(raw.split('\r\n').some((l) => l.startsWith('Bcc:'))).toBe(false);
