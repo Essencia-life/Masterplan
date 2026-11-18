@@ -99,7 +99,7 @@ npm run build
 Guests and volunteers get a welcome mail a few days before they arrive. A daily Vercel cron (`vercel.json`, 08:00 UTC) calls `/api/cron/welcome`, which
 
 - looks at all confirmed bookings in calendars that support participants (name contains "guest" or "volunteer"),
-- for every template of that kind whose mail is due (see below), sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_SENDER`,
+- for every template of that kind whose mail is due (see below), sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_GUEST_SENDER` / `MAIL_VOLUNTEER_SENDER`,
 - remembers every sent mail in Redis (`mail:<template>:<event>:<email>`, 120 days) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
 
 Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer-welcome`, `volunteer-thanks`. Calendars with "volunteer" in the group or calendar name use the `volunteer-` ones, all other participant calendars the `guest-` ones. Every template has a **timing**: N days *before arrival* or N days *after departure* (departure = the booking's last day). A mail is due from that day on, bookings made later get it with the next run, and a mail more than 7 days overdue is skipped (a missed cron run must not mail old guests). Unconfirmed bookings get nothing.
@@ -113,7 +113,7 @@ Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer
 Setup:
 
 1. Admin console, domain-wide delegation: add the scope `https://www.googleapis.com/auth/gmail.send` to the service account's client ID. Enable the Gmail API in the Google Cloud project.
-2. Set `MAIL_SENDER` (a real Workspace mailbox, e.g. `welcome@essencia.life`; Gmail shows the mail as sent by it), optionally `MAIL_FROM_NAME`, and `CRON_SECRET`.
+2. Set `MAIL_GUEST_SENDER` and `MAIL_VOLUNTEER_SENDER` (real Workspace mailboxes, e.g. `guests@essencia.life`; Gmail shows the mail as sent by it, with the name of the mailbox) and `CRON_SECRET`.
 3. Test: `curl -H "Authorization: Bearer $CRON_SECRET" "https://<site>/api/cron/welcome?test=you@example.org&template=guest-welcome"` sends one sample mail and records nothing.
 
 The GitHub login for Sveltia runs on this site (`src/routes/admin/auth`, copied from the website repo). Create a GitHub OAuth app with callback URL `https://<site>/admin/auth/callback` and set `CMS_GITHUB_CLIENT_ID` / `CMS_GITHUB_CLIENT_SECRET`. Editors need write access to this repo.

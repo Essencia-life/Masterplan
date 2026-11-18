@@ -34,7 +34,8 @@ async function deliver(c: Compiled, to: Participant, d: Dates, role: 'guest' | '
 	if (uses(c, 'telegramJoinLink')) vars.telegramJoinLink = await telegramJoinLink({ name: to.name, departure: d.departure, role });
 	const escaped = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, escapeHtml(v)]));
 	await sendRaw(
-		buildMime({ from: sender(), to: { name: to.name, email: to.email }, subject: fill(c.t.subject, vars), text: fill(c.text, vars), html: fill(c.html, escaped), attachments: c.t.attachments })
+		role,
+		buildMime({ from: sender(role), to: { name: to.name, email: to.email }, subject: fill(c.t.subject, vars), text: fill(c.text, vars), html: fill(c.html, escaped), attachments: c.t.attachments })
 	);
 }
 
@@ -52,7 +53,8 @@ export async function sendTest(slug: string, to: string) {
  */
 export async function sendWelcomes(today: string) {
 	if (!canClaim) throw new Error('Upstash Redis is required so that nobody receives a mail twice');
-	sender(); // fail early when the sender is not configured
+	sender('guest'); // fail early when a sender is not configured
+	sender('volunteer');
 	const { meta } = await loadMeta();
 	const groupLabel = (id: string) => meta.groups.find((g) => g.id === id)?.label ?? '';
 	const rows = meta.rows.filter((r) => r.kind === 'calendar' && r.available && supportsParticipants(groupLabel(r.groupId), r.label));
