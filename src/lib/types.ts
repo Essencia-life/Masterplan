@@ -57,6 +57,8 @@ export type EventDetail = {
 	jobs: Job[];
 	/** people of a guest/volunteer booking (private property, Google does not notify them) */
 	participants: Participant[];
+	/** which mails went to whom: lower-case email -> mail name -> ISO time ('' when the time was not stored), null when not sent */
+	mailSent: Record<string, Record<string, string | null>>;
 	/** stable key of this kind of event, e.g. "lunch" (part of the sign-up storage key) */
 	type: string;
 	/** master event of a series, '' for single events; set for instances and for the master itself */

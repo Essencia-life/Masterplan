@@ -83,10 +83,22 @@ export async function invalidateRows(rowIds: string[]) {
 /** True when Redis is configured: "send once" markers need shared storage, memory would not survive a serverless instance. */
 export const canClaim = !!redis;
 
-/** Atomically claims `key` for `ttlSeconds`; false when somebody already did. Needs Redis (see canClaim). */
+/** Atomically claims `key` for `ttlSeconds` (the value is the time of the claim); false when somebody already did. Needs Redis (see canClaim). */
 export async function claimOnce(key: string, ttlSeconds: number): Promise<boolean> {
 	if (!redis) throw new Error('Upstash Redis is not configured');
-	return (await redis.set(key, '1', { nx: true, ex: ttlSeconds })) === 'OK';
+	return (await redis.set(key, new Date().toISOString(), { nx: true, ex: ttlSeconds })) === 'OK';
+}
+
+/** When each key was claimed: the ISO time, "" for a claim from before times were stored, null for none. */
+export async function claimedAt(keys: string[]): Promise<(string | null)[]> {
+	if (!redis || !keys.length) return keys.map(() => null);
+	try {
+		const values = await redis.mget<unknown[]>(...keys);
+		return values.map((v) => (v == null ? null : typeof v === 'string' ? v : ''));
+	} catch (e) {
+		console.error('claims unavailable', e);
+		return keys.map(() => null);
+	}
 }
 
 /** Gives a claim back, e.g. when sending failed and the next run should try again. */

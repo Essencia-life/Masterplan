@@ -7,6 +7,7 @@ import { sendRaw, sender } from './gmail';
 import { feedbackLink, telegramJoinLink } from './links';
 import { escapeHtml, fill, markdownToHtml, markdownToText } from './markdown';
 import { buildMime } from './mime';
+import { mailKey } from './timings';
 import { CATCH_UP_DAYS, isDue } from './timing';
 import { getTemplate, TEMPLATE_SLUGS, type MailTemplate } from './templates';
 
@@ -95,7 +96,7 @@ export async function sendWelcomes(today: string) {
 				if (!isDue(c.t.timing, today, first, last)) continue;
 				for (const person of fromAttendees(e.attendees)) {
 					if (result.sent >= MAX_PER_RUN) return result;
-					const key = `mail:${c.t.slug}:${e.id}:${person.email.toLowerCase()}`;
+					const key = mailKey(c.t.slug, e.id, person.email);
 					if (!(await claimOnce(key, CLAIM_DAYS * 86400))) {
 						result.skipped++;
 						continue;
