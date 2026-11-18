@@ -94,7 +94,7 @@ export async function sendWelcomes(today: string) {
 			const [first, end] = eventRange(e);
 			const last = addDays(end, -1);
 			for (const c of templates) {
-				if (!isDue(c.t, today, first, last)) continue;
+				if (!isDue(c.t.timing, today, first, last)) continue;
 				for (const person of fromAttendees(e.attendees)) {
 					if (result.sent >= MAX_PER_RUN) return result;
 					const key = `mail:${c.t.slug}:${e.id}:${person.email.toLowerCase()}`;
