@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 export type Attachment = { filename: string; content: Buffer; type: string };
+/** An image the HTML refers to as <img src="cid:…"> */
+export type Inline = { cid: string; content: Buffer; type: string };
 type Address = { name?: string; email: string };
 
 const wrap = (b64: string) => (b64.match(/.{1,76}/g) ?? []).join('\r\n');
@@ -23,11 +25,31 @@ function address({ name, email }: Address) {
 }
 
 /** A complete RFC 822 message: text and HTML alternatives, optional attachments. */
-export function buildMime(m: { from: Address; to: Address; subject: string; text: string; html: string; attachments?: Attachment[] }): string {
+export function buildMime(m: { from: Address; to: Address; subject: string; text: string; html: string; attachments?: Attachment[]; inline?: Inline }): string {
 	const alt = `alt_${randomUUID()}`;
 	const mixed = `mixed_${randomUUID()}`;
 	const part = (type: string, body: string) => [`Content-Type: ${type}; charset=UTF-8`, 'Content-Transfer-Encoding: base64', '', b64(body)];
 	const alternative = [`--${alt}`, ...part('text/plain', m.text), `--${alt}`, ...part('text/html', m.html), `--${alt}--`];
+	// with an inline image the alternatives and the image go into multipart/related
+	const rel = `rel_${randomUUID()}`;
+	const body = m.inline
+		? [
+				`Content-Type: multipart/related; boundary="${rel}"`,
+				'',
+				`--${rel}`,
+				`Content-Type: multipart/alternative; boundary="${alt}"`,
+				'',
+				...alternative,
+				`--${rel}`,
+				`Content-Type: ${m.inline.type}`,
+				`Content-ID: <${m.inline.cid}>`,
+				'Content-Disposition: inline',
+				'Content-Transfer-Encoding: base64',
+				'',
+				b64(m.inline.content),
+				`--${rel}--`
+			]
+		: [`Content-Type: multipart/alternative; boundary="${alt}"`, '', ...alternative];
 	const attachments = m.attachments ?? [];
 	const head = [
 		`From: ${address(m.from)}`,
@@ -36,7 +58,7 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 		`Date: ${new Date().toUTCString()}`,
 		'MIME-Version: 1.0'
 	];
-	if (!attachments.length) return [...head, `Content-Type: multipart/alternative; boundary="${alt}"`, '', ...alternative, ''].join('\r\n');
+	if (!attachments.length) return [...head, ...body, ''].join('\r\n');
 	const files = attachments.flatMap((a) => {
 		const ascii = a.filename.replace(/[^A-Za-z0-9._-]/g, '_');
 		return [
@@ -48,5 +70,5 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 			b64(a.content)
 		];
 	});
-	return [...head, `Content-Type: multipart/mixed; boundary="${mixed}"`, '', `--${mixed}`, `Content-Type: multipart/alternative; boundary="${alt}"`, '', ...alternative, ...files, `--${mixed}--`, ''].join('\r\n');
+	return [...head, `Content-Type: multipart/mixed; boundary="${mixed}"`, '', `--${mixed}`, ...body, ...files, `--${mixed}--`, ''].join('\r\n');
 }

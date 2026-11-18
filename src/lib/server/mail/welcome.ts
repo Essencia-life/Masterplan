@@ -2,6 +2,7 @@ import { fromAttendees, supportsParticipants, type Participant } from '#lib/part
 import { claimOnce, canClaim, releaseClaim } from '#lib/server/cache';
 import { addDays, eventRange, loadMeta, resolveCalendarId, serviceCalendar, withBackoff } from '#lib/server/google';
 import { renderLayout } from './layout';
+import { logo } from './logo';
 import { sendRaw, sender } from './gmail';
 import { feedbackLink, telegramJoinLink } from './links';
 import { escapeHtml, fill, markdownToHtml, markdownToText } from './markdown';
@@ -35,7 +36,7 @@ async function deliver(c: Compiled, to: Participant, d: Dates, role: 'guest' | '
 	const escaped = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, escapeHtml(v)]));
 	await sendRaw(
 		role,
-		buildMime({ from: sender(role), to: { name: to.name, email: to.email }, subject: fill(c.t.subject, vars), text: fill(c.text, vars), html: fill(c.html, escaped), attachments: c.t.attachments })
+		buildMime({ from: sender(role), to: { name: to.name, email: to.email }, subject: fill(c.t.subject, vars), text: fill(c.text, vars), html: fill(c.html, escaped), attachments: c.t.attachments, inline: logo })
 	);
 }
 

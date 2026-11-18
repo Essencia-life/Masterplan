@@ -30,7 +30,7 @@ export const variables = defineEnvVars({
 	// --- welcome mails (Vercel cron → /api/cron/welcome → Gmail API) ---
 	/** Vercel sends it as "Authorization: Bearer <CRON_SECRET>" to cron routes; the route refuses everything else */
 	CRON_SECRET: optional,
-	/** Workspace mailboxes the guest / volunteer mails are sent from (the service account sends as them; needs the gmail.send delegation scope). The name shown is the one of the mailbox. */
+	/** Workspace mailboxes the guest / volunteer mails are sent from (the service account sends as them; needs the gmail.send delegation scope). The display names are set in gmail.ts. */
 	MAIL_GUEST_SENDER: optional,
 	MAIL_VOLUNTEER_SENDER: optional,
 	/** {{feedbackLink}} in the mail texts */

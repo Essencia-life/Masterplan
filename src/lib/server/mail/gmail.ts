@@ -9,7 +9,7 @@ const clients = new Map<Role, ReturnType<typeof google.gmail>>();
 export function sender(role: Role) {
 	const email = role === 'guest' ? env.MAIL_GUEST_SENDER : env.MAIL_VOLUNTEER_SENDER;
 	if (!email) throw new Error(`MAIL_${role.toUpperCase()}_SENDER is not set`);
-	return { email };
+	return { name: role === 'guest' ? 'Essência Nature Retreat' : 'Essência Volunteer Program', email };
 }
 
 /**

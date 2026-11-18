@@ -108,12 +108,12 @@ Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer
 
 **Links** in the texts: `{{feedbackLink}}` is `MAIL_FEEDBACK_URL`. `{{telegramJoinLink}}` is asked per guest from the Orga invite endpoint (`MAIL_TELEGRAM_ENDPOINT`, the full URL of `GET /orga/api/telegram/invite`): query `name`, `departure` (YYYY-MM-DD) and `type` (`guest` or `volunteer`), the secret `ORGA_BOT_INVITE_SECRET_TOKEN` (the same value the Orga app checks) in the `x-secret-token` header, answer `{ "invite_link": "https://…" }`. If the endpoint is not set, the secret is missing, it times out (5 s), answers with an error or without a valid https link, `MAIL_TELEGRAM_FALLBACK_URL` is used; if that is empty too, the mail is not sent and retried at the next run. Both links are only looked up for templates that contain the placeholder, and they work bare (a clickable link) or as a target: `[Join us]({{telegramJoinLink}})`.
 
-**Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): forest header with the "essência" wordmark, terra accent, parchment background. Gmail ignores web fonts, the serif falls back to Georgia. There is no logo image in the repo; replace the header text by an `<mj-image>` once there is a PNG.
+**Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): the logo on the parchment background, a white message block with rounded top corners, a footer linking to essencia.life. The logo (`logo.png`, the website's `logo.avif` converted, because mail clients do not show AVIF) is sent inside every mail as an inline image. Gmail ignores web fonts, the serif falls back to Georgia.
 
 Setup:
 
 1. Admin console, domain-wide delegation: add the scope `https://www.googleapis.com/auth/gmail.send` to the service account's client ID. Enable the Gmail API in the Google Cloud project.
-2. Set `MAIL_GUEST_SENDER` and `MAIL_VOLUNTEER_SENDER` (real Workspace mailboxes, e.g. `guests@essencia.life`; Gmail shows the mail as sent by it, with the name of the mailbox) and `CRON_SECRET`.
+2. Set `MAIL_GUEST_SENDER` and `MAIL_VOLUNTEER_SENDER` (real Workspace mailboxes, e.g. `guests@essencia.life`; Gmail shows the mail as sent by it). The sender names are fixed in `gmail.ts`: "Essência Nature Retreat" (guests) and "Essência Volunteer Program" (volunteers) and `CRON_SECRET`.
 3. Test: `curl -H "Authorization: Bearer $CRON_SECRET" "https://<site>/api/cron/welcome?test=you@example.org&template=guest-welcome"` sends one sample mail and records nothing.
 
 The GitHub login for Sveltia runs on this site (`src/routes/admin/auth`, copied from the website repo). Create a GitHub OAuth app with callback URL `https://<site>/admin/auth/callback` and set `CMS_GITHUB_CLIENT_ID` / `CMS_GITHUB_CLIENT_SECRET`. Editors need write access to this repo.

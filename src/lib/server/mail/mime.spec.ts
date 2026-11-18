@@ -23,6 +23,15 @@ describe('buildMime', () => {
 		expect(raw).toContain(content.toString('base64'));
 	});
 
+	it('puts an inline image next to the alternatives', () => {
+		const content = Buffer.from('png-bytes');
+		const raw = buildMime({ ...base, subject: 'Hello', inline: { cid: 'logo@x', content, type: 'image/png' } });
+		expect(raw).toContain('multipart/related');
+		expect(raw).toContain('Content-ID: <logo@x>');
+		expect(raw).toContain(content.toString('base64'));
+		expect(raw).not.toContain('multipart/mixed');
+	});
+
 	it('keeps line breaks in the subject out of the headers', () => {
 		const raw = buildMime({ ...base, subject: 'Hi\r\nBcc: evil@example.org' });
 		expect(raw.split('\r\n').some((l) => l.startsWith('Bcc:'))).toBe(false);
