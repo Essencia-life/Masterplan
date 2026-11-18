@@ -7,6 +7,7 @@
 	import type { LayoutProps } from './$types';
 	import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, EyeOff, StickyNote, TriangleAlert } from '@lucide/svelte';
 	import { calendarIdFromSlug, calendarSlug, isResourceId } from '#lib/calendar-id';
+	import logo from '#lib/assets/logo_tree.png';
 	import { Timeline, setTimeline } from '#lib/timeline.svelte';
 	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
@@ -60,7 +61,7 @@
 		if (ids.length) untrack(() => timeline.ensure(ids, a, b));
 	});
 
-	type Placed = { ev: CalEvent; s: number; e: number; lane: number; linked: boolean };
+	type Placed = { ev: CalEvent; s: number; e: number; lane: number };
 	function pack(row: RowInfo): { items: Placed[]; lanes: number } {
 		if (timeline.hidden.has(row.id)) return { items: [], lanes: 1 };
 		const raw = timeline
@@ -73,11 +74,13 @@
 			let lane = laneEnd.findIndex((end) => end <= x.s);
 			if (lane < 0) lane = laneEnd.length;
 			laneEnd[lane] = x.e;
-			return { ...x, lane, linked: linkCount.get(x.ev.linkId)! > 1 };
+			return { ...x, lane };
 		});
 		return { items, lanes: Math.max(1, laneEnd.length) };
 	}
-	// number of rows an iCalUID occurs in (>1 ⇒ draw as linked booking)
+	/** a room booking takes the colour of the calendar it was made in */
+	const colorOf = (ev: CalEvent, own: string) => (ev.originRow && timeline.meta?.rows.find((r) => r.id === ev.originRow && r.kind === 'calendar')?.color) || own;
+	// number of rows an iCalUID occurs in (used for the "+N linked" tooltip)
 	const linkCount = $derived.by(() => {
 		const m = new Map<string, number>();
 		for (const g of groups) {
@@ -294,7 +297,7 @@
 
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
 	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
-		<h1 class="mr-auto text-2xl leading-none">essência <span class="text-base font-normal text-muted">· Booking</span></h1>
+		<h1 class="mr-auto flex items-center gap-2 text-2xl leading-none"><img src={logo} alt="essência" class="h-9 w-auto" /><span class="text-base font-normal text-muted">· Masterplan</span></h1>
 		{#if timeline.loading > 0}
 			<Spinner type="dots" class="mr-2" />
 		{/if}
@@ -457,10 +460,9 @@
 											data-ev
 											class="evt absolute overflow-clip rounded-md text-left text-[13px] leading-[26px] text-white"
 											class:long={it.e - it.s > 1}
-											class:hatched={it.linked}
 											class:tentative={it.ev.status === 'tentative'}
 											class:hot={hot === it.ev.linkId}
-											style="left:{it.s * DAYW + 1}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{row.color}"
+											style="left:{it.s * DAYW + 1}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{colorOf(it.ev, row.color)}"
 											onmousemove={(e) => showTip(e, it)}
 											onclick={() => openEvent(it.ev)}
 											onmouseenter={() => canHover && canHover.matches && (hot = it.ev.linkId)}
@@ -575,10 +577,6 @@
 		height: 32px;
 		display: flex;
 		align-items: center;
-	}
-	.evt.hatched {
-		background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.18) 0 4px, transparent 4px 9px);
-		box-shadow: inset 3px 0 0 rgb(0 0 0 / 0.35);
 	}
 	.evt.tentative {
 		opacity: 0.7;

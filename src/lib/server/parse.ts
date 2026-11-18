@@ -56,6 +56,7 @@ export function normalize(e: calendar_v3.Schema$Event, rowId: string): CalEvent 
 		description: e.description ?? '',
 		fromLocal: e.start?.dateTime ? `${localDay(e.start.dateTime)}T${localTime(e.start.dateTime)}` : undefined,
 		toLocal: e.end?.dateTime ? `${localDay(e.end.dateTime)}T${localTime(e.end.dateTime)}` : undefined,
+		originRow: isResourceId(rowId) ? e.organizer?.email ?? undefined : undefined,
 		declinedRooms: isResourceId(rowId)
 			? undefined
 			: (e.attendees ?? []).filter((a) => a.resource && a.responseStatus === 'declined').map((a) => a.email!)

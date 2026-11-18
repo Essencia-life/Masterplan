@@ -32,6 +32,8 @@ export type CalEvent = {
 	/** exact local times (YYYY-MM-DDTHH:mm), only for timed events; all-day events occupy whole days */
 	fromLocal?: string;
 	toLocal?: string;
+	/** resource rows only: id of the calendar the booking was made in (the organizer), its colour is used for the bar */
+	originRow?: string;
 	/** resource calendar ids that declined this booking (only known on the organizer's calendar) */
 	declinedRooms?: string[];
 };

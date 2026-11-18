@@ -353,6 +353,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					const optimistic = pending.map((rid) => ({
 						id: `optimistic:${res.linkId}:${rid}`,
 						rowId: rid,
+						originRow: form.calendar,
 						linkId: res.linkId,
 						title: form.title,
 						start: form.start,
