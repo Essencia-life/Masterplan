@@ -297,7 +297,7 @@
 
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
 	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
-		<h1 class="mr-auto flex items-center gap-2 text-2xl leading-none"><img src={logo} alt="essência" class="h-9 w-auto" /><span class="text-base font-normal text-muted">· Masterplan</span></h1>
+		<h1 class="mr-auto flex items-center gap-2 text-2xl leading-none"><img src={logo} alt="essência" class="h-9 w-auto" /><span class="text-base font-normal text-muted">Masterplan</span></h1>
 		{#if timeline.loading > 0}
 			<Spinner type="dots" class="mr-2" />
 		{/if}
