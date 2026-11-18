@@ -38,8 +38,8 @@ export const variables = defineEnvVars({
 	MAIL_FEEDBACK_URL: optional,
 	/** {{telegramJoinLink}}: the Orga invite endpoint, full URL (GET …/orga/api/telegram/invite?name=&departure=YYYY-MM-DD&type=guest|volunteer) */
 	MAIL_TELEGRAM_ENDPOINT: optional,
-	/** sent as x-secret-token header; the same value the Orga app checks against its ORGA_INVITE_SECRET_TOKEN */
-	ORGA_INVITE_SECRET_TOKEN: optional,
+	/** sent as x-secret-token header; the secret the Orga app checks the header against */
+	ORGA_BOT_INVITE_SECRET_TOKEN: optional,
 	/** used when the endpoint is not set or fails */
 	MAIL_TELEGRAM_FALLBACK_URL: optional,
 

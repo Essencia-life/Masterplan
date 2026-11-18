@@ -17,13 +17,13 @@ export function feedbackLink(): string {
 export async function telegramJoinLink(person: { name: string; departure: string; role: 'guest' | 'volunteer' }): Promise<string> {
 	if (env.MAIL_TELEGRAM_ENDPOINT) {
 		try {
-			if (!env.ORGA_INVITE_SECRET_TOKEN) throw new Error('ORGA_INVITE_SECRET_TOKEN is not set');
+			if (!env.ORGA_BOT_INVITE_SECRET_TOKEN) throw new Error('ORGA_BOT_INVITE_SECRET_TOKEN is not set');
 			const url = new URL(env.MAIL_TELEGRAM_ENDPOINT);
 			url.searchParams.set('name', person.name);
 			url.searchParams.set('departure', person.departure);
 			url.searchParams.set('type', person.role);
 			const res = await fetch(url, {
-				headers: { 'x-secret-token': env.ORGA_INVITE_SECRET_TOKEN },
+				headers: { 'x-secret-token': env.ORGA_BOT_INVITE_SECRET_TOKEN },
 				signal: AbortSignal.timeout(5000)
 			});
 			if (!res.ok) throw new Error(`status ${res.status}`);
