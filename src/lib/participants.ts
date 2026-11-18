@@ -28,7 +28,8 @@ export const newParticipant = (): Participant => ({ name: '', email: '' });
 /** First problem with the list, or null. */
 export const participantsProblem = (p: Participant[]): string | null => participantsSchema.safeParse(p).error?.issues[0]?.message ?? null;
 
-export const toAttendee = (p: Participant): calendar_v3.Schema$EventAttendee => ({ email: p.email, displayName: p.name });
+/** Booked by the team, so they count as confirmed (no invitation to answer). */
+export const toAttendee = (p: Participant): calendar_v3.Schema$EventAttendee => ({ email: p.email, displayName: p.name, responseStatus: 'accepted' });
 
 /** The people among an event's attendees: not rooms, not the organizer's own entry. */
 export const fromAttendees = (attendees?: calendar_v3.Schema$EventAttendee[] | null): Participant[] =>

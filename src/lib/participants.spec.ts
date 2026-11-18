@@ -25,7 +25,7 @@ describe('participantsProblem', () => {
 describe('attendees', () => {
 	it('maps to Google attendees and back, leaving out rooms and the organizer', () => {
 		const ana = { name: 'Ana', email: 'ana@example.org' };
-		expect(toAttendee(ana)).toEqual({ email: 'ana@example.org', displayName: 'Ana' });
+		expect(toAttendee(ana)).toEqual({ email: 'ana@example.org', displayName: 'Ana', responseStatus: 'accepted' });
 		const attendees = [
 			{ email: 'room@resource.calendar.google.com', resource: true },
 			{ email: 'me@essencia.life', self: true, organizer: true },
