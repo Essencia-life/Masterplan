@@ -1,10 +1,10 @@
 import mjml2html from 'mjml';
+import { LOGO_CID } from './logo';
 
 /**
- * Brand layout of the mails (same palette as the app): forest header with the wordmark,
- * parchment background, terra accent. Gmail ignores web fonts, so the serif falls back to Georgia.
- * The wordmark is text, like in the app header; for a logo image put a PNG into static/email/ and
- * replace the header text below with an <mj-image>.
+ * Brand layout of the mails (same palette as the app): the logo on the parchment background, a white
+ * message block with rounded top corners, a footer with the website link. Gmail ignores web fonts, so
+ * the serif falls back to Georgia.
  */
 const mjmlSource = (bodyHtml: string) => `<mjml>
   <mj-head>
@@ -23,20 +23,17 @@ const mjmlSource = (bodyHtml: string) => `<mjml>
     </mj-style>
   </mj-head>
   <mj-body background-color="#f6f0e2" width="600px">
-    <mj-section background-color="#2c4632" padding="30px 24px 26px 24px">
+    <mj-section padding="28px 24px 20px 24px">
       <mj-column>
-        <mj-text align="center" padding="0" font-family="'Cormorant Garamond', Georgia, serif" font-size="40px" font-weight="700" letter-spacing="1px" line-height="1.1" color="#f6f0e2">essência</mj-text>
+        <mj-image src="cid:${LOGO_CID}" alt="Essência" width="140px" padding="0" align="center" />
       </mj-column>
     </mj-section>
-    <mj-section background-color="#b05d38" padding="0">
-      <mj-column><mj-spacer height="4px" /></mj-column>
-    </mj-section>
-    <mj-section background-color="#fffcf4" padding="30px 24px 16px 24px">
+    <mj-section background-color="#ffffff" border-radius="8px 8px 0 0" padding="30px 24px 16px 24px">
       <mj-column><mj-text padding="0 8px">${bodyHtml}</mj-text></mj-column>
     </mj-section>
     <mj-section padding="18px 24px 28px 24px">
       <mj-column>
-        <mj-text align="center" font-size="12px" color="#8b8372">Essência Cooperativa · Aljezur, Portugal</mj-text>
+        <mj-text align="center" font-size="12px" color="#8b8372">Essência Cooperativa · Aljezur, Portugal · <a href="https://essencia.life" style="color:#8b8372">essencia.life</a></mj-text>
       </mj-column>
     </mj-section>
   </mj-body>
