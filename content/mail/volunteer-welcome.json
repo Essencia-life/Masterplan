@@ -1,7 +1,7 @@
 {
   "subject": "Welcome to Essência, volunteer",
   "timing": {
-    "days": 3,
+    "days": 7,
     "when": "before"
   },
   "message": "Dear {{name}},\n\nThank you for helping at Essência soon! Your volunteering starts on {{arrival}}.\n\nYou find most relevant information attached to this email. \n\nYou can join our Telegram group using this link:\n{{telegramJoinLink}}\n\nIf you have any questions before you come, just reply to this email or ask in our Telegram group.\n\nSee you soon,\nthe Essência team",
