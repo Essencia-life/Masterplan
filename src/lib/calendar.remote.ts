@@ -19,8 +19,9 @@ import {
 	resolveOrganizer,
 	serviceCalendar
 } from '#lib/server/google';
-import { DAY_MS, TIME_ZONE, addDaysIso } from '#lib/time';
+import { DAY_MS, TIME_ZONE, addDaysIso, isoToDay, toMinutes } from '#lib/time';
 import { buildRecurrence, linesBefore, linesFrom, parseRecurrence, repeatSchema } from '#lib/recurrence';
+import { overlaps } from '#lib/conflicts';
 import { fromAttendees, participantKind, participantsSchema, supportsParticipants, toAttendee } from '#lib/participants';
 import { mailSent } from '#lib/server/mail/timings';
 import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
@@ -150,6 +151,15 @@ export const saveEvent = command(saveSchema, async (input) => {
 	};
 	// rows/dates of the previous state also change (rooms released, event moved)
 	const before = input.id ? (await serviceCalendar().events.get({ calendarId, eventId: input.id })).data : null;
+	// the rooms are checked against Google right now (the timeline may be stale); nothing is written when a room is taken
+	if (input.resourceIds.length) {
+		const span: [number, number] = input.allDay
+			? [isoToDay(input.start) * 1440, isoToDay(input.end) * 1440]
+			: [toMinutes(input.start, input.startTime), toMinutes(input.end, input.endTime)];
+		const fresh = await freshRows(input.resourceIds, input.start, input.end);
+		const clash = input.resourceIds.some((rid) => fresh.rows[rid]?.some((e) => e.linkId !== before?.iCalUID && overlaps(e, span)));
+		if (clash) return { conflict: true as const, fresh };
+	}
 	const masterId = before?.recurringEventId ?? (before?.recurrence?.length ? before.id! : undefined);
 	// "this and following" and "all" change the series master instead of one instance
 	const scope = masterId ? input.scope : 'this';
