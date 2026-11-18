@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildRecurrence, firstOccurrence, linesBefore, linesFrom, moonDates, parseRecurrence } from './recurrence';
+import { buildRecurrence, firstOccurrence, linesBefore, linesFrom, moonDates, parseRecurrence, type Repeat } from './recurrence';
 
 describe('weekly', () => {
 	it('starts on the first matching weekday and lists the days', () => {
 		// 2026-11-13 is a Friday
-		const r = buildRecurrence({ kind: 'weekly', weekdays: [3, 1] }, '2026-11-13', false, '07:00');
+		const r = buildRecurrence({ kind: 'weekly', interval: 1, weekdays: [3, 1] }, '2026-11-13', false, '07:00');
 		expect(r).toEqual({ start: '2026-11-16', recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO,WE'] });
 	});
 	it('ends on the day for all-day events and at the end of the day (UTC) for timed ones', () => {
@@ -35,7 +35,7 @@ describe('moon', () => {
 
 describe('every other week', () => {
 	it('writes and reads INTERVAL', () => {
-		const r = { kind: 'weekly', interval: 2, weekdays: [1, 4] } as const;
+		const r: Repeat = { kind: 'weekly', interval: 2, weekdays: [1, 4] };
 		const lines = buildRecurrence(r, '2026-11-02', false)!.recurrence;
 		expect(lines).toEqual(['RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH']);
 		expect(parseRecurrence(lines).repeat).toEqual({ ...r, until: undefined });
@@ -45,7 +45,7 @@ describe('every other week', () => {
 
 describe('parseRecurrence', () => {
 	it('reads back what buildRecurrence writes', () => {
-		const weekly = { kind: 'weekly', interval: 1, weekdays: [1, 3], until: '2026-12-31' } as const;
+		const weekly: Repeat = { kind: 'weekly', interval: 1, weekdays: [1, 3], until: '2026-12-31' };
 		for (const allDay of [true, false]) {
 			expect(parseRecurrence(buildRecurrence(weekly, '2026-11-02', allDay)!.recurrence).repeat).toEqual(weekly);
 		}
