@@ -495,7 +495,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			</TabItem>
 			{#if partsEnabled}
 				<TabItem key="participants" title="People ({form.participants.length})">
-					<p class="text-sm text-muted">Added as guests of the event. Google sends no invitation or update email, but the event shows up in the calendar of anyone with a Google account.</p>
+					<p class="text-sm text-muted">Added as guests of the event. Google sends no invitation or update email.</p>
 					{#each form.participants as p, i (i)}
 						<div class="flex items-center gap-2">
 							<Input class="min-w-0 flex-1" placeholder="Name" aria-label="Name" bind:value={p.name} />
