@@ -128,19 +128,28 @@ export class Timeline {
 	}
 
 	/**
-	 * Re-read the given rows after a few seconds and stop as soon as every row contains the
-	 * event (identified by linkId). Rows where it never shows up lose their optimistic entry
-	 * (e.g. the room declined).
+	 * Re-read the given rows until every one contains the event (identified by linkId), for at most
+	 * a minute. The optimistic entries stay visible meanwhile (a refresh would drop them); rows where
+	 * the event never shows up lose theirs at the end (e.g. the room declined).
 	 */
-	async confirm(rowIds: string[], from: string, to: string, linkId: string, delays = [3000, 8000]) {
-		for (const delay of delays) {
+	async confirm(
+		rowIds: string[],
+		from: string,
+		to: string,
+		linkId: string,
+		optimistic: CalEvent[] = [],
+		delays = [2000, 3000, 5000, 5000, 5000, 10000, 10000, 10000, 10000]
+	) {
+		for (const [i, delay] of delays.entries()) {
 			await new Promise((r) => setTimeout(r, delay));
 			try {
 				const fresh = await refreshRows({ rowIds, from, to });
 				this.applyFresh(fresh);
-				if (rowIds.every((id) => fresh.rows[id]?.some((e) => e.linkId === linkId))) return;
+				const missing = optimistic.filter((o) => !fresh.rows[o.rowId]?.some((e) => e.linkId === linkId));
+				if (!missing.length) return;
+				if (i < delays.length - 1) this.addOptimistic(missing);
 			} catch {
-				// try again with the next delay
+				// try again with the next delay; the optimistic entries were not touched
 			}
 		}
 	}

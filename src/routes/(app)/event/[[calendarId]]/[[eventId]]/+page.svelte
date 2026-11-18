@@ -350,19 +350,18 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			if (!conflicts.length) {
 				const pending = form.resourceIds.filter((rid) => !res.fresh.rows[rid]?.some((e) => e.linkId === res.linkId));
 				if (pending.length) {
-					timeline.addOptimistic(
-						pending.map((rid) => ({
-							id: `optimistic:${res.linkId}:${rid}`,
-							rowId: rid,
-							linkId: res.linkId,
-							title: form.title,
-							start: form.start,
-							end: dayToIso(isoToDay(form.end) + 1),
-							status: 'tentative' as const,
-							description: form.description
-						}))
-					);
-					void timeline.confirm(pending, res.fresh.from, res.fresh.to, res.linkId);
+					const optimistic = pending.map((rid) => ({
+						id: `optimistic:${res.linkId}:${rid}`,
+						rowId: rid,
+						linkId: res.linkId,
+						title: form.title,
+						start: form.start,
+						end: dayToIso(isoToDay(form.end) + 1),
+						status: 'tentative' as const,
+						description: form.description
+					}));
+					timeline.addOptimistic(optimistic);
+					void timeline.confirm(pending, res.fresh.from, res.fresh.to, res.linkId, optimistic);
 				}
 			}
 			await close();
