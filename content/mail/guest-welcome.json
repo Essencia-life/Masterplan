@@ -4,7 +4,7 @@
     "days": 3,
     "when": "before"
   },
-  "message": "Dear {{name}},\n\nWe are looking forward to welcoming you at Essência on {{arrival}}!\n\nAttached you find some useful information in advance:\n\n- How to get to Essência\n- Fire-Awareness Guide\n\nYou can join our Telegram group with your personal link:\n{{telegramJoinLink}}\n\nIf you have any questions, just reply to this email.\n\nAté já,\nEssência Nature Retreat",
+  "message": "Dear {{name}},\n\nWe are looking forward to welcoming you at Essência on {{arrival}}!\n\nAttached you find some useful information in advance:\n\n- How to get to Essência\n- Fire-Awareness Guide\n\nA friendly reminder: Essência is a substance-free and plant-based community, and smoking is not permitted on our land. Thank you for helping us keep it a peaceful place for everyone!\n\nYou can join our Telegram group with your personal link:\n{{telegramJoinLink}}\n\nIf you have any questions, just reply to this email.\n\nAté já,\nEssência Nature Retreat",
   "attachments": [
     "/content/mail/files/How to get to Essência.pdf",
     "/content/mail/files/Fire-Awareness Guide.pdf"
