@@ -60,11 +60,13 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 	];
 	if (!attachments.length) return [...head, ...body, ''].join('\r\n');
 	const files = attachments.flatMap((a) => {
-		const ascii = a.filename.replace(/[^A-Za-z0-9._-]/g, '_');
+		// ê -> e: accents are split off and dropped, so "Essência" does not become "Ess_ncia"
+		const plain = a.filename.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+		const ascii = plain.replace(/[^A-Za-z0-9._-]/g, '_');
 		return [
 			`--${mixed}`,
 			`Content-Type: ${a.type}; name="${ascii}"`,
-			`Content-Disposition: attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(a.filename)}`,
+			`Content-Disposition: attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(plain)}`,
 			'Content-Transfer-Encoding: base64',
 			'',
 			b64(a.content)

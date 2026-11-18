@@ -32,6 +32,12 @@ describe('buildMime', () => {
 		expect(raw).not.toContain('multipart/mixed');
 	});
 
+	it('turns accented letters in file names into plain ones', () => {
+		const raw = buildMime({ ...base, subject: 'Hello', attachments: [{ filename: 'How to get to Essência.pdf', content: Buffer.from('x'), type: 'application/pdf' }] });
+		expect(raw).toContain('filename="How_to_get_to_Essencia.pdf"');
+		expect(raw).toContain("filename*=UTF-8''How%20to%20get%20to%20Essencia.pdf");
+	});
+
 	it('keeps line breaks in the subject out of the headers', () => {
 		const raw = buildMime({ ...base, subject: 'Hi\r\nBcc: evil@example.org' });
 		expect(raw.split('\r\n').some((l) => l.startsWith('Bcc:'))).toBe(false);
