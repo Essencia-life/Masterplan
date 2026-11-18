@@ -25,9 +25,10 @@ describe('buildMime', () => {
 
 	it('puts an inline image next to the alternatives', () => {
 		const content = Buffer.from('png-bytes');
-		const raw = buildMime({ ...base, subject: 'Hello', inline: { cid: 'logo@x', content, type: 'image/png' } });
+		const raw = buildMime({ ...base, subject: 'Hello', inline: { cid: 'logo@x', filename: 'logo.png', content, type: 'image/png' } });
 		expect(raw).toContain('multipart/related');
 		expect(raw).toContain('Content-ID: <logo@x>');
+		expect(raw).toContain('Content-Disposition: inline; filename="logo.png"');
 		expect(raw).toContain(content.toString('base64'));
 		expect(raw).not.toContain('multipart/mixed');
 	});
@@ -36,6 +37,16 @@ describe('buildMime', () => {
 		const raw = buildMime({ ...base, subject: 'Hello', attachments: [{ filename: 'How to get to Essência.pdf', content: Buffer.from('x'), type: 'application/pdf' }] });
 		expect(raw).toContain('filename="How_to_get_to_Essencia.pdf"');
 		expect(raw).toContain("filename*=UTF-8''How%20to%20get%20to%20Essencia.pdf");
+	});
+
+	it('lists the PDFs before the inline logo', () => {
+		const raw = buildMime({
+			...base,
+			subject: 'Hello',
+			attachments: [{ filename: 'a.pdf', content: Buffer.from('x'), type: 'application/pdf' }],
+			inline: { cid: 'logo@x', filename: 'logo.png', content: Buffer.from('y'), type: 'image/png' }
+		});
+		expect(raw.indexOf('name="a.pdf"')).toBeLessThan(raw.indexOf('name="logo.png"'));
 	});
 
 	it('keeps line breaks in the subject out of the headers', () => {

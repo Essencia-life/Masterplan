@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export type Attachment = { filename: string; content: Buffer; type: string };
 /** An image the HTML refers to as <img src="cid:…"> */
-export type Inline = { cid: string; content: Buffer; type: string };
+export type Inline = { cid: string; filename: string; content: Buffer; type: string };
 type Address = { name?: string; email: string };
 
 const wrap = (b64: string) => (b64.match(/.{1,76}/g) ?? []).join('\r\n');
@@ -30,26 +30,6 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 	const mixed = `mixed_${randomUUID()}`;
 	const part = (type: string, body: string) => [`Content-Type: ${type}; charset=UTF-8`, 'Content-Transfer-Encoding: base64', '', b64(body)];
 	const alternative = [`--${alt}`, ...part('text/plain', m.text), `--${alt}`, ...part('text/html', m.html), `--${alt}--`];
-	// with an inline image the alternatives and the image go into multipart/related
-	const rel = `rel_${randomUUID()}`;
-	const body = m.inline
-		? [
-				`Content-Type: multipart/related; boundary="${rel}"`,
-				'',
-				`--${rel}`,
-				`Content-Type: multipart/alternative; boundary="${alt}"`,
-				'',
-				...alternative,
-				`--${rel}`,
-				`Content-Type: ${m.inline.type}`,
-				`Content-ID: <${m.inline.cid}>`,
-				'Content-Disposition: inline',
-				'Content-Transfer-Encoding: base64',
-				'',
-				b64(m.inline.content),
-				`--${rel}--`
-			]
-		: [`Content-Type: multipart/alternative; boundary="${alt}"`, '', ...alternative];
 	const attachments = m.attachments ?? [];
 	const head = [
 		`From: ${address(m.from)}`,
@@ -58,7 +38,25 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 		`Date: ${new Date().toUTCString()}`,
 		'MIME-Version: 1.0'
 	];
-	if (!attachments.length) return [...head, ...body, ''].join('\r\n');
+	const alt_ = [`Content-Type: multipart/alternative; boundary="${alt}"`, '', ...alternative];
+	// the logo the HTML refers to as cid:…; Gmail lists attachments in the order of the parts
+	const inline = m.inline
+		? [
+				`Content-Type: ${m.inline.type}; name="${m.inline.filename}"`,
+				`Content-ID: <${m.inline.cid}>`,
+				// like Gmail's own mails: with a name and an attachment id it keeps the image in the body instead of listing it
+				`X-Attachment-Id: ${m.inline.cid}`,
+				`Content-Disposition: inline; filename="${m.inline.filename}"`,
+				'Content-Transfer-Encoding: base64',
+				'',
+				b64(m.inline.content)
+			]
+		: [];
+	if (!attachments.length) {
+		if (!m.inline) return [...head, ...alt_, ''].join('\r\n');
+		const rel = `rel_${randomUUID()}`;
+		return [...head, `Content-Type: multipart/related; boundary="${rel}"`, '', `--${rel}`, ...alt_, `--${rel}`, ...inline, `--${rel}--`, ''].join('\r\n');
+	}
 	const files = attachments.flatMap((a) => {
 		// ê -> e: accents are split off and dropped, so "Essência" does not become "Ess_ncia"
 		const plain = a.filename.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -72,5 +70,6 @@ export function buildMime(m: { from: Address; to: Address; subject: string; text
 			b64(a.content)
 		];
 	});
-	return [...head, `Content-Type: multipart/mixed; boundary="${mixed}"`, '', `--${mixed}`, ...body, ...files, `--${mixed}--`, ''].join('\r\n');
+	// with PDFs: body, PDFs, then the logo, so the PDFs come first in the attachment list
+	return [...head, `Content-Type: multipart/mixed; boundary="${mixed}"`, '', `--${mixed}`, ...alt_, ...files, ...(m.inline ? [`--${mixed}`, ...inline] : []), `--${mixed}--`, ''].join('\r\n');
 }
