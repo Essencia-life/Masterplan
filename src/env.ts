@@ -26,6 +26,23 @@ export const variables = defineEnvVars({
 	// --- cache: Upstash Redis (set by the Vercel marketplace integration as KV_REST_API_*); optional, falls back to memory ---
 	KV_REST_API_URL: optional,
 	KV_REST_API_TOKEN: optional,
-	KV_REST_API_URL: optional,
-	KV_REST_API_TOKEN: optional
+
+	// --- welcome mails (Vercel cron → /api/cron/welcome → Gmail API) ---
+	/** Vercel sends it as "Authorization: Bearer <CRON_SECRET>" to cron routes; the route refuses everything else */
+	CRON_SECRET: optional,
+	/** Workspace mailboxes the guest / volunteer mails are sent from (the service account sends as them; needs the gmail.send delegation scope). The name shown is the one of the mailbox. */
+	MAIL_GUEST_SENDER: optional,
+	MAIL_VOLUNTEER_SENDER: optional,
+	/** {{feedbackLink}} in the mail texts */
+	MAIL_FEEDBACK_URL: optional,
+	/** {{telegramJoinLink}}: the Orga invite endpoint, full URL (GET …/orga/api/telegram/invite?name=&departure=YYYY-MM-DD&type=guest|volunteer) */
+	MAIL_TELEGRAM_ENDPOINT: optional,
+	/** sent as x-secret-token header; the secret the Orga app checks the header against */
+	ORGA_BOT_INVITE_SECRET_TOKEN: optional,
+	/** used when the endpoint is not set or fails */
+	MAIL_TELEGRAM_FALLBACK_URL: optional,
+
+	// --- Sveltia CMS login at /admin (GitHub OAuth app, callback URL: <site>/admin/auth/callback) ---
+	CMS_GITHUB_CLIENT_ID: optional,
+	CMS_GITHUB_CLIENT_SECRET: optional
 });

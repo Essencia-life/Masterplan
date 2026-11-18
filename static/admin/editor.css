@@ -1,0 +1,4 @@
+.wrapper.component.inline {
+    width: unset !important;
+    white-space: nowrap;
+}

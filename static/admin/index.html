@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<title>Content Manager</title>
+		<link rel="stylesheet" href="./editor.css">
+	</head>
+	<body>
+		<script>window.CMS_MANUAL_INIT = true;</script>
+		<script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
+		<script>
+			// Placeholders for the mail text: inserted as {{name}} / {{arrival}} / {{departure}}, replaced for every guest when the mail is sent
+			for (const [id, label] of [
+				['name', 'Guest name'],
+				['arrival', 'Arrival date'],
+				['departure', 'Departure date'],
+				['telegramJoinLink', 'Telegram join link'],
+				['feedbackLink', 'Feedback page link']
+			]) {
+				CMS.registerEditorComponent({
+					id,
+					label,
+					fields: [],
+					pattern: new RegExp('^\\{\\{' + id + '\\}\\}$'),
+					fromBlock: () => ({}),
+					toBlock: () => '{{' + id + '}}',
+					toPreview: () => '{{' + id + '}}'
+				});
+			}
+			// Mail texts: one file per mail, same fields. PDFs go into the repo (not static/, so they are not public).
+			const fields = [
+				{
+					"name": "subject",
+					"label": "Subject",
+					"widget": "string",
+					"hint": "Placeholders work here too: {{name}}, {{arrival}}, {{departure}}"
+				},
+				{
+					"name": "timing",
+					"label": "Send",
+					"widget": "object",
+					"hint": "Bookings made later get the mail at the next daily run; a mail more than a week overdue is not sent",
+					"fields": [
+						{
+							"name": "days",
+							"label": "Days",
+							"widget": "number",
+							"value_type": "int",
+							"min": 0,
+							"max": 60,
+							"default": 3
+						},
+						{
+							"name": "when",
+							"label": "When",
+							"widget": "select",
+							"options": [
+								{
+									"label": "before arrival",
+									"value": "before"
+								},
+								{
+									"label": "after departure",
+									"value": "after"
+								}
+							],
+							"default": "before"
+						}
+					]
+				},
+				{
+					"name": "message",
+					"label": "Message",
+					"widget": "markdown",
+					"buttons": [
+						"bold",
+						"italic",
+						"link",
+						"bulleted-list"
+					],
+					"editor_components": [
+						"name",
+						"arrival",
+						"departure",
+						"telegramJoinLink",
+						"feedbackLink"
+					],
+					"hint": "Use the + button to insert the guest name, the arrival / departure date, the Telegram join link or the feedback page link"
+				},
+				{
+					"name": "attachments",
+					"label": "Attachments (PDF only)",
+					"widget": "list",
+					"required": false,
+					"field": {
+						"name": "file",
+						"label": "PDF",
+						"widget": "file",
+						"accept": ".pdf",
+						"required": true
+					}
+				}
+			];
+			CMS.init({
+				config: {
+					load_config_file: false,
+					// login endpoints live on this site: src/routes/admin/auth
+					backend: { name: 'github', repo: 'Essencia-life/Masterplan', branch: 'main', base_url: location.origin, auth_endpoint: '/admin/auth' },
+					media_folder: 'content/mail/files',
+					public_folder: '/content/mail/files',
+					collections: [
+						{
+							name: 'mail',
+							label: 'Mails',
+							description: 'File names must start with guest- or volunteer-, other files are ignored. Rename new entries accordingly.',
+							editor: { preview: false },
+							// the file name is the slug; guest-… / volunteer-… decides who gets the mail
+							folder: 'content/mail',
+							extension: 'json',
+							format: 'json',
+							create: true,
+							identifier_field: 'subject',
+							fields
+						}
+					]
+				}
+			});
+		</script>
+	</body>
+</html>

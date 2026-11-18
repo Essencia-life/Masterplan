@@ -21,6 +21,7 @@ import {
 } from '#lib/server/google';
 import { DAY_MS, TIME_ZONE, addDaysIso } from '#lib/time';
 import { buildRecurrence, linesBefore, linesFrom, parseRecurrence, repeatSchema } from '#lib/recurrence';
+import { fromAttendees, participantsSchema, supportsParticipants, toAttendee } from '#lib/participants';
 import { isLegacyJobs, jobsSchema, parseJobs, slugify, supportsJobs, typeSchema } from '#lib/jobs';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -82,6 +83,7 @@ export const getEvent = query(
 					endTime: allDay ? '' : localTime(ev.end!.dateTime!),
 					resourceIds: (ev.attendees ?? []).filter((a) => a.resource).map((a) => a.email!),
 					jobs: parseJobs(ev.extendedProperties?.private?.jobs),
+					participants: fromAttendees(ev.attendees),
 					type: ev.extendedProperties?.private?.type ?? '',
 					seriesId: ev.recurringEventId ?? (ev.recurrence?.length ? ev.id! : ''),
 					repeat,
@@ -110,6 +112,8 @@ const saveSchema = z.object({
 	/** undefined = leave the jobs untouched, [] = remove them */
 	jobs: jobsSchema.optional(),
 	type: typeSchema.optional(),
+	/** undefined = keep the people the event has, [] = remove them */
+	participants: participantsSchema.optional(),
 	/** new events only: repeat weekly (RRULE) or on moon dates (RDATE list) */
 	repeat: repeatSchema.optional(),
 	/** for an event of a series: only this event, this and all following ones, or the whole series */
@@ -136,8 +140,7 @@ export const saveEvent = command(saveSchema, async (input) => {
 		description: input.description,
 		status: input.status,
 		start: input.allDay ? { date: input.start } : { dateTime: `${input.start}T${input.startTime}:00`, timeZone: TIME_ZONE },
-		end: input.allDay ? { date: input.end } : { dateTime: `${input.end}T${input.endTime}:00`, timeZone: TIME_ZONE },
-		attendees: input.resourceIds.map((email) => ({ email, resource: true }))
+		end: input.allDay ? { date: input.end } : { dateTime: `${input.end}T${input.endTime}:00`, timeZone: TIME_ZONE }
 	};
 	// rows/dates of the previous state also change (rooms released, event moved)
 	const before = input.id ? (await serviceCalendar().events.get({ calendarId, eventId: input.id })).data : null;
@@ -166,6 +169,11 @@ export const saveEvent = command(saveSchema, async (input) => {
 			requestBody.end = input.allDay ? { date: endDay } : { dateTime: `${endDay}T${input.endTime}:00`, timeZone: TIME_ZONE };
 		}
 	}
+	// attendees are replaced as a whole: rooms plus people (the existing ones when the form did not touch them)
+	const people = (input.participants ?? fromAttendees((master ?? before)?.attendees)).map(toAttendee);
+	requestBody.attendees = [...input.resourceIds.map((email) => ({ email, resource: true })), ...people];
+	// guests only receive the event: they cannot see each other, edit it or invite others
+	if (people.length) Object.assign(requestBody, { guestsCanSeeOtherGuests: false, guestsCanModify: false, guestsCanInviteOthers: false });
 	// private properties: null removes one in a patch
 	const props: Record<string, string | null> = {};
 	let lastDay = input.end;
@@ -177,6 +185,11 @@ export const saveEvent = command(saveSchema, async (input) => {
 			? { jobs: JSON.stringify(input.jobs), type: input.type || slugify(input.title) || 'event' }
 			: { jobs: null, type: null };
 		Object.assign(props, jobProps);
+	}
+	if (input.participants) {
+		const { meta } = await loadMeta();
+		const row = meta.rows.find((r) => r.id === input.calendar);
+		if (!row || !supportsParticipants(meta.groups.find((g) => g.id === row.groupId)?.label ?? '', row.label)) error(400, 'Participants are not available in this calendar');
 	}
 	if (input.repeat) {
 		// the series' first event: the master, or this event (a new series, or a single event becoming one)

@@ -9,6 +9,7 @@
 	import { getTimeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
+import { newParticipant, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
 import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
 	import { MOON_PHASES, MOON_RELATIONS } from '#lib/moon';
 	import { moonDates, type Repeat } from '#lib/recurrence';
@@ -48,6 +49,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		endTime: '10:00',
 		resourceIds: [] as string[],
 		jobs: [] as Job[],
+		participants: [] as Participant[],
 		type: '',
 		seriesId: ''
 	});
@@ -55,7 +57,9 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	let savedType = $state('');
 	/** jobs/key/scope as loaded, to tell whether the Jobs tab was touched */
 	let jobsBase = $state(JSON.stringify([[], '']));
-	let tab = $state<'details' | 'resources' | 'jobs' | 'conflicts'>('details');
+	/** participants as loaded, to tell whether the tab was touched */
+	let partsBase = $state('[]');
+	let tab = $state<'details' | 'resources' | 'participants' | 'jobs' | 'conflicts'>('details');
 	let resolving = $state<string | null>(null);
 	let moveTo = $state<Record<string, string>>({});
 	let busy = $state(false);
@@ -79,13 +83,14 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
 					if (id !== eventId) return; // another booking was opened meanwhile
-					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, type: e.type, seriesId: e.seriesId };
+					form = { id: e.id, linkId: e.linkId, calendar: e.calendar, title: e.title, start: e.start, end: e.allDay ? dayToIso(isoToDay(e.end) - 1) : e.end, status: e.status, description: e.description, allDay: e.allDay, startTime: e.startTime || '09:00', endTime: e.endTime || '10:00', resourceIds: e.resourceIds, jobs: e.jobs, participants: e.participants, type: e.type, seriesId: e.seriesId };
 					savedType = e.type;
 					const loaded = repFromEvent(e);
 					rep = loaded;
 					savedStart = e.start;
 					repBase = JSON.stringify(loaded);
 					jobsBase = JSON.stringify([e.jobs, e.type]);
+					partsBase = JSON.stringify(e.participants);
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
 				.finally(() => id === eventId && (loading = false));
@@ -108,6 +113,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				endTime: '10:00',
 				resourceIds: row && !isMain ? [row] : [],
 				jobs: [],
+				participants: [],
 				type: '',
 				seriesId: ''
 			};
@@ -118,6 +124,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			repBase = JSON.stringify(fresh);
 			repeatCustom = [];
 			jobsBase = JSON.stringify([[], '']);
+			partsBase = '[]';
 		}
 	});
 
@@ -189,6 +196,14 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	});
 	const jobsError = $derived(jobsEnabled ? jobsProblem(form.jobs, form.type) : null);
 	const jobsDirty = $derived(JSON.stringify([form.jobs, form.type]) !== jobsBase);
+
+	// ----- participants (guest / volunteer bookings) -----
+	const partsEnabled = $derived.by(() => {
+		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
+		return !!r && supportsParticipants(groupLabel(r.groupId), r.label);
+	});
+	const partsError = $derived(partsEnabled ? participantsProblem(form.participants) : null);
+	const partsDirty = $derived(JSON.stringify(form.participants) !== partsBase);
 
 	// ----- warnings -----
 	const sD = $derived(form.start ? isoToDay(form.start) : 0);
@@ -278,7 +293,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		return null;
 	});
 
-	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !repeatError);
+	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !partsError && !repeatError);
 
 	// jobs and repeat describe the series, so they are saved for all events unless chosen otherwise
 	async function save(scope: 'this' | 'following' | 'all' = repeat || (jobsEnabled && jobsDirty) ? 'all' : 'this') {
@@ -300,6 +315,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				scope,
 				...(repeat ? { repeat } : {}),
 				// only when the Jobs tab was touched, so other edits never rewrite them
+				// likewise the participants; they belong to one booking, so no scope is forced
+				...(partsEnabled && partsDirty ? { participants: form.participants } : {}),
 				...(jobsEnabled && jobsDirty ? { jobs: prepareJobs(form.jobs), type: form.type || undefined } : {})
 			});
 			timeline.applyFresh(res.fresh);
@@ -476,6 +493,20 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						<p class="text-sm text-muted">No resource calendars found. Subscribe the service account's user to them first.</p>
 					{/each}
 			</TabItem>
+			{#if partsEnabled}
+				<TabItem key="participants" title="People ({form.participants.length})">
+					<p class="text-sm text-muted">Added as guests of the event. Google sends no invitation or update email, but the event shows up in the calendar of anyone with a Google account.</p>
+					{#each form.participants as p, i (i)}
+						<div class="flex items-center gap-2">
+							<Input class="min-w-0 flex-1" placeholder="Name" aria-label="Name" bind:value={p.name} />
+							<Input class="min-w-0 flex-1" type="email" placeholder="Email" aria-label="Email" bind:value={p.email} />
+							<CloseButton aria-label="Remove person" onclick={() => form.participants.splice(i, 1)} />
+						</div>
+					{/each}
+					<Button size="xs" color="alternative" onclick={() => form.participants.push(newParticipant())}>Add person</Button>
+					{#if partsError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{partsError}</p>{/if}
+				</TabItem>
+			{/if}
 			{#if jobsEnabled}
 				<TabItem key="jobs" title="Jobs ({form.jobs.length})">
 					<p class="text-sm text-muted">People sign up for these jobs in the Telegram week plan.</p>

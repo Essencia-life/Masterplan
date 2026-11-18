@@ -94,6 +94,30 @@ npm run test       # vitest: pure functions in time, calendar-id, server/parse
 npm run build
 ```
 
+## Welcome mails
+
+Guests and volunteers get a welcome mail a few days before they arrive. A daily Vercel cron (`vercel.json`, 08:00 UTC) calls `/api/cron/welcome`, which
+
+- looks at all confirmed bookings in calendars that support participants (name contains "guest" or "volunteer"),
+- for every template of that kind whose mail is due (see below), sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_GUEST_SENDER` / `MAIL_VOLUNTEER_SENDER`,
+- remembers every sent mail in Redis (`mail:<template>:<event>:<email>`, 120 days) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
+
+Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer-welcome`, `volunteer-thanks`. Calendars with "volunteer" in the group or calendar name use the `volunteer-` ones, all other participant calendars the `guest-` ones. Every template has a **timing**: N days *before arrival* or N days *after departure* (departure = the booking's last day). A mail is due from that day on, bookings made later get it with the next run, and a mail more than 7 days overdue is skipped (a missed cron run must not mail old guests). Unconfirmed bookings get nothing.
+
+**Texts and attachments** are maintained in Sveltia CMS (open `/admin/` on the deployed site; config embedded in `static/admin/index.html`, backend GitHub). One entry per file in `content/mail/` (a folder collection: create new ones in the CMS; the file name is the slug and must start with `guest-` or `volunteer-`, otherwise it is ignored): subject, timing, message (simple Markdown: bold, italic, links, lists, `##` heading) and PDF attachments. The editor has components for the placeholders `{{name}}`, `{{arrival}}` and `{{departure}}`, which are replaced per guest. The files live in `content/mail/*.json` and `content/mail/files/*.pdf`; they are read at build time, so a change goes live with the next deployment, and the PDFs are not public.
+
+**Links** in the texts: `{{feedbackLink}}` is `MAIL_FEEDBACK_URL`. `{{telegramJoinLink}}` is asked per guest from the Orga invite endpoint (`MAIL_TELEGRAM_ENDPOINT`, the full URL of `GET /orga/api/telegram/invite`): query `name`, `departure` (YYYY-MM-DD) and `type` (`guest` or `volunteer`), the secret `ORGA_BOT_INVITE_SECRET_TOKEN` (the same value the Orga app checks) in the `x-secret-token` header, answer `{ "invite_link": "https://…" }`. If the endpoint is not set, the secret is missing, it times out (5 s), answers with an error or without a valid https link, `MAIL_TELEGRAM_FALLBACK_URL` is used; if that is empty too, the mail is not sent and retried at the next run. Both links are only looked up for templates that contain the placeholder, and they work bare (a clickable link) or as a target: `[Join us]({{telegramJoinLink}})`.
+
+**Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): forest header with the "essência" wordmark, terra accent, parchment background. Gmail ignores web fonts, the serif falls back to Georgia. There is no logo image in the repo; replace the header text by an `<mj-image>` once there is a PNG.
+
+Setup:
+
+1. Admin console, domain-wide delegation: add the scope `https://www.googleapis.com/auth/gmail.send` to the service account's client ID. Enable the Gmail API in the Google Cloud project.
+2. Set `MAIL_GUEST_SENDER` and `MAIL_VOLUNTEER_SENDER` (real Workspace mailboxes, e.g. `guests@essencia.life`; Gmail shows the mail as sent by it, with the name of the mailbox) and `CRON_SECRET`.
+3. Test: `curl -H "Authorization: Bearer $CRON_SECRET" "https://<site>/api/cron/welcome?test=you@example.org&template=guest-welcome"` sends one sample mail and records nothing.
+
+The GitHub login for Sveltia runs on this site (`src/routes/admin/auth`, copied from the website repo). Create a GitHub OAuth app with callback URL `https://<site>/admin/auth/callback` and set `CMS_GITHUB_CLIENT_ID` / `CMS_GITHUB_CLIENT_SECRET`. Editors need write access to this repo.
+
 ## Routes
 
 | Route | Purpose |
@@ -116,7 +140,10 @@ npm run build
 | `src/lib/calendar.remote.ts` | remote functions (zod): `getEvents`, `getEvent`, `saveEvent`, `deleteEvent`, `resolveConflict`, `refreshRows` |
 | `src/lib/server/google.ts` | Google clients, row model (calendar list), event reads, auth helpers (service account vs. user) |
 | `src/lib/server/parse.ts` | pure functions: calendar/room name schemes, time zone helpers, event normalisation (unit tested) |
-| `src/lib/server/cache.ts` | Upstash/in-memory row cache |
+| `src/lib/server/cache.ts` | Upstash/in-memory row cache, send-once markers |
+| `src/lib/server/mail/` | welcome mails: templates (CMS content), Markdown subset, MJML layout, MIME, Gmail, the cron logic |
+| `src/routes/api/cron/welcome/` | the cron endpoint |
+| `content/mail/`, `static/admin/` | mail texts and PDFs, Sveltia CMS |
 | `src/lib/server/session.ts`, `oauth.ts` | encrypted cookie session, OAuth client |
 | `src/lib/timeline.svelte.ts` | `Timeline` state, one instance per page load via Svelte context (`setTimeline`/`getTimeline`): events per row, expanded groups, hidden rows, group order |
 | `src/lib/time.ts` | the app time zone, day maths (days since a base date), end-of-event rule shared by server and panel, moon phase, wall-clock minutes |

@@ -1,0 +1,9 @@
+{
+	"subject": "Thank you for your help",
+	"timing": {
+		"days": 1,
+		"when": "after"
+	},
+	"message": "Dear {{name}},\n\nThank you for your help at Essência until **{{departure}}**. It meant a lot to us.\n\nWarm wishes,\nthe Essência team",
+	"attachments": []
+}

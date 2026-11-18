@@ -2,8 +2,9 @@ export const DAY_MS = 86_400_000;
 /** The one time zone of the app: everything shown and written is wall-clock time here, for server and browser alike. */
 export const TIME_ZONE = 'Europe/Lisbon';
 
-/** today's date (YYYY-MM-DD) in TIME_ZONE */
-const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+/** today's date (YYYY-MM-DD) in TIME_ZONE; call it again for a fresh value, the constants below are fixed at load */
+export const localTodayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const todayIso = localTodayIso();
 const epochDay = (iso: string) => Math.round(Date.parse(iso + 'T00:00:00Z') / DAY_MS);
 
 /** epoch day of the first timeline day (1 Jan of last year) */

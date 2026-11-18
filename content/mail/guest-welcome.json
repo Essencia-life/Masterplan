@@ -1,0 +1,9 @@
+{
+  "subject": "Welcome to Essência",
+  "timing": {
+    "days": 3,
+    "when": "before"
+  },
+  "message": "Dear {{name}},\n\nWe are looking forward to welcome you on {{arrival}} at Essência!\n\nAttached you find useful information you might want to read before your arrival.\n\nYou can join our Telegram group using this link:\n{{telegramJoinLink}}\n\nIf you have any questions before you come, just reply to this email.\n\nSee you soon,\nthe Essência team",
+  "attachments": []
+}
