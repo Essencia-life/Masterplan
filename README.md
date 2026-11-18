@@ -100,7 +100,7 @@ Guests and volunteers get a welcome mail a few days before they arrive. A daily 
 
 - looks at all confirmed bookings in calendars that support participants (name contains "guest" or "volunteer"),
 - for every template of that kind whose mail is due (see below), sends one mail per participant (the event's attendees, see above) through the **Gmail API**, using the service account delegated to `MAIL_GUEST_SENDER` / `MAIL_VOLUNTEER_SENDER`,
-- remembers every sent mail in Redis (`mail:<template>:<event>:<email>`, 120 days) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
+- remembers every sent mail in Redis (`masterplan:mail:<template>:<event>:<sha256 of the email>`, 120 days; the value is the send time) so nobody gets it twice; if sending fails, the marker is released and the next run retries. **Redis is required**, the route refuses to run without it. At most 40 mails per run.
 
 Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer-welcome`, `volunteer-thanks`. Calendars with "volunteer" in the group or calendar name use the `volunteer-` ones, all other participant calendars the `guest-` ones. Every template has a **timing**: N days *before arrival* or N days *after departure* (departure = the booking's last day). A mail is due from that day on, bookings made later get it with the next run, and a mail more than 7 days overdue is skipped (a missed cron run must not mail old guests). Unconfirmed bookings get nothing.
 
