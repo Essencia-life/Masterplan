@@ -23,7 +23,7 @@
 					id,
 					label,
 					fields: [],
-					pattern: new RegExp('^\\{\\{' + id + '\\}\\}$'),
+					pattern: new RegExp('\\{\\{' + id + '\\}\\}'), // no ^$ anchors: matches inside a line too (editor.css shows the components inline)
 					fromBlock: () => ({}),
 					toBlock: () => '{{' + id + '}}',
 					toPreview: () => '{{' + id + '}}'
