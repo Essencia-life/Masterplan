@@ -1,6 +1,9 @@
+import * as z from 'zod';
 import { addDaysIso } from '#lib/time';
 
-export type Timing = { days: number; when: 'before' | 'after' };
+/** when to send: `days` before the arrival or after the departure (bookings made later get it with the next run) */
+export const timingSchema = z.object({ days: z.number().int().min(0).max(60), when: z.enum(['before', 'after']) }).default({ days: 3, when: 'before' });
+export type Timing = z.infer<typeof timingSchema>;
 
 /** a mail that was due longer ago is not sent any more (a missed cron run must not mail old guests) */
 export const CATCH_UP_DAYS = 7;

@@ -8,6 +8,8 @@ import * as z from 'zod';
 
 /** Calendars whose events carry participants. Matched on "group name", like jobs. */
 export const PARTICIPANT_CALENDARS = /guest|volunteer/i;
+/** Which mails a booking's people get: volunteer calendars have their own, everything else counts as guests. */
+export const participantKind = (groupLabel: string, calendarLabel: string) => (/volunteer/i.test(`${groupLabel} ${calendarLabel}`) ? 'volunteer' : 'guest');
 export const supportsParticipants = (groupLabel: string, calendarLabel: string) => PARTICIPANT_CALENDARS.test(`${groupLabel} ${calendarLabel}`);
 
 export const participantSchema = z.object({

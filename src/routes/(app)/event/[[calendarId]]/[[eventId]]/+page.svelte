@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import type { PageProps } from './$types';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import { ChevronDown } from '@lucide/svelte';
@@ -9,11 +10,12 @@
 	import { getTimeline } from '#lib/timeline.svelte';
 	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
-import { newParticipant, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
+import { newParticipant, participantKind, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
 import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
 	import { MOON_PHASES, MOON_RELATIONS } from '#lib/moon';
 	import { moonDates, type Repeat } from '#lib/recurrence';
 
+	let { data }: PageProps = $props();
 	const timeline = getTimeline();
 
 	const eventId = $derived(page.params.eventId);
@@ -201,6 +203,17 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	const partsEnabled = $derived.by(() => {
 		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
 		return !!r && supportsParticipants(groupLabel(r.groupId), r.label);
+	});
+	/** "a welcome mail 7 days before arrival and a thank-you mail 1 day after departure", from the CMS texts */
+	const mailHint = $derived.by(() => {
+		const r = timeline.meta?.rows.find((x) => x.id === form.calendar);
+		if (!r) return '';
+		const parts = data.mails[participantKind(groupLabel(r.groupId), r.label)].map((m) => {
+			const what = m.when === 'before' ? 'arrival' : 'departure';
+			const when = m.days === 0 ? `on the day of ${what}` : `${m.days} day${m.days === 1 ? '' : 's'} ${m.when} ${what}`;
+			return `${m.name === 'thanks' ? 'a thank-you' : `a ${m.name}`} mail ${when}`;
+		});
+		return parts.length ? `Each person gets ${parts.join(' and ')}.` : '';
 	});
 	const partsError = $derived(partsEnabled ? participantsProblem(form.participants) : null);
 	const partsDirty = $derived(JSON.stringify(form.participants) !== partsBase);
@@ -495,6 +508,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			</TabItem>
 			{#if partsEnabled}
 				<TabItem key="participants" title="People ({form.participants.length})">
+					{#if mailHint}<p class="text-sm text-muted">{mailHint}</p>{/if}
 					{#each form.participants as p, i (i)}
 						<div class="flex items-center gap-2">
 							<Input class="min-w-0 flex-1" placeholder="Name" aria-label="Name" bind:value={p.name} />
