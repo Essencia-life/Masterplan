@@ -1,10 +1,10 @@
 {
-  "subject": "Welcome to Essência",
+  "subject": "Your stay at Essência Nature Retreat",
   "timing": {
     "days": 3,
     "when": "before"
   },
-  "message": "Dear {{name}},\n\nWe are looking forward to welcome you on {{arrival}} at Essência!\n\nAttached you find useful information you might want to read before your arrival.\n\nYou can join our Telegram group using this link:\n{{telegramJoinLink}}\n\nIf you have any questions before you come, just reply to this email.\n\nSee you soon,\nthe Essência team",
+  "message": "Hey {{name}},\n\nWe are looking forward to welcoming you at Essência on {{arrival}}!\n\nAttached you find some useful information in advance:\n\n- Fire-Awareness Guide\n- How to get to Essência\n\nYou can join our Telegram group with your personal link:\n{{telegramJoinLink}}\n\nIf you have any questions, just reply to this email.\n\nAté já,\nEssência Nature Retreat",
   "attachments": [
     "/content/mail/files/How to get to Essência.pdf",
     "/content/mail/files/Fire-Awareness Guide.pdf"
