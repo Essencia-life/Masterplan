@@ -28,7 +28,7 @@ const mjmlSource = (bodyHtml: string) => `<mjml>
         <mj-image src="cid:${LOGO_CID}" alt="Essência" width="140px" padding="0" align="center" />
       </mj-column>
     </mj-section>
-    <mj-section background-color="#ffffff" border-radius="8px 8px 0 0" padding="30px 24px 16px 24px">
+    <mj-section background-color="#ffffff" padding="30px 24px 16px 24px">
       <mj-column><mj-text padding="0 8px">${bodyHtml}</mj-text></mj-column>
     </mj-section>
     <mj-section padding="18px 24px 28px 24px">
