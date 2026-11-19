@@ -307,7 +307,7 @@
 <svelte:window bind:innerWidth />
 
 <div class="flex h-dvh flex-col" style="--label-w:{LABW}px; --day-w:{DAYW}px">
-	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-2">
+	<header class="relative z-50 flex shrink-0 items-center gap-2 border-b border-line bg-surface h-14 px-3">
 		<h1 class="mr-auto flex items-center gap-2 text-2xl leading-none"><img src={logo} alt="essência" class="h-9 w-auto" /><span class="text-base font-normal text-muted">Masterplan</span></h1>
 		{#if timeline.loading > 0}
 			<Spinner type="dots" class="mr-2" />
@@ -508,7 +508,7 @@
 			     md and up: a column next to the timeline. -->
 			<aside
 				transition:motion
-				class="pointer-events-none fixed inset-0 z-40 overflow-y-auto overscroll-contain md:pointer-events-auto md:static md:flex md:w-[380px] md:shrink-0 md:flex-col md:overflow-hidden md:border-l md:border-line md:bg-surface md:shadow-sheet"
+				class="pointer-events-none fixed inset-x-0 bottom-0 top-14 z-40 overflow-y-auto overscroll-contain md:pointer-events-auto md:static md:flex md:w-[380px] md:shrink-0 md:flex-col md:overflow-hidden md:border-l md:border-line md:bg-surface md:shadow-sheet"
 			>
 				<div class="h-[42dvh] md:hidden" aria-hidden="true"></div>
 				<!-- fixed width inside, so the content does not reflow while the column grows -->
