@@ -1,4 +1,5 @@
 import { claimedAt } from '#lib/server/cache';
+import { mailKey } from '#lib/server/keys';
 import { timingSchema, type Timing } from './timing';
 
 // its own glob (JSON only), so the pages do not load the PDFs of templates.ts
@@ -14,9 +15,6 @@ export function mailTimings(kind: 'guest' | 'volunteer'): (Timing & { name: stri
 		})
 		.sort((a, b) => Number(a.when === 'after') - Number(b.when === 'after') || a.days - b.days);
 }
-
-/** Redis key that marks a mail as sent to one person for one event (the cron claims it before sending). */
-export const mailKey = (slug: string, eventId: string, email: string) => `mail:${slug}:${eventId}:${email.toLowerCase()}`;
 
 /** Per person (lower-case email) and mail ("welcome", "thanks", …): when it was sent, null when not. */
 export type MailSent = Record<string, Record<string, string | null>>;

@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import * as env from '$app/env/private';
 import type { CalEvent } from '#lib/types';
+import { PREFIX } from './keys';
 
 const TTL_SECONDS = 60;
 
@@ -11,8 +12,8 @@ const redis = url && token ? new Redis({ url, token }) : null;
 
 const memory = new Map<string, { exp: number; value: CalEvent[] }>();
 
-const keyOf = (rowId: string, from: string, to: string) => `ev:${rowId}:${from}:${to}`;
-const indexOf = (rowId: string) => `idx:${rowId}`;
+const keyOf = (rowId: string, from: string, to: string) => `${PREFIX}ev:${rowId}:${from}:${to}`;
+const indexOf = (rowId: string) => `${PREFIX}idx:${rowId}`;
 
 function memGet(key: string) {
 	const hit = memory.get(key);
@@ -67,7 +68,7 @@ export async function cachedRows(
 
 /** Drop everything cached for these rows (after a mutation). */
 export async function invalidateRows(rowIds: string[]) {
-	for (const id of rowIds) for (const k of memory.keys()) if (k.startsWith(`ev:${id}:`)) memory.delete(k);
+	for (const id of rowIds) for (const k of memory.keys()) if (k.startsWith(`${PREFIX}ev:${id}:`)) memory.delete(k);
 	if (!redis) return;
 	try {
 		for (const id of rowIds) {

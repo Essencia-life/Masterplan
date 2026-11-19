@@ -7,7 +7,7 @@ import { sendRaw, sender } from './gmail';
 import { feedbackLink, telegramJoinLink } from './links';
 import { escapeHtml, fill, markdownToHtml, markdownToText } from './markdown';
 import { buildMime } from './mime';
-import { mailKey } from './timings';
+import { mailKey } from '#lib/server/keys';
 import { CATCH_UP_DAYS, isDue } from './timing';
 import { getTemplate, TEMPLATE_SLUGS, type MailTemplate } from './templates';
 
