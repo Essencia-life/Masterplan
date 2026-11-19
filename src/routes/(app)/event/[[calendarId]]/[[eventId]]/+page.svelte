@@ -65,8 +65,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	/** which mails were sent to whom (lower-case email -> mail -> time) */
 	let mailSent = $state<EventDetail['mailSent']>({});
 	let tab = $state<'details' | 'resources' | 'participants' | 'jobs' | 'conflicts'>('details');
-	let resolving = $state<string | null>(null);
+	let resolving = $state(false);
 	let moveTo = $state<Record<string, string>>({});
+	// keys of conflicts already released/moved: Google removes the room's copy with a delay, until then they stay hidden
+	let handled = $state<string[]>([]);
+	let picked = $state<string[]>([]);
+	let bulkTo = $state<string>();
 	let busy = $state(false);
 	let loadError = $state<string | null>(null);
 	/** an existing booking is being fetched */
@@ -251,7 +255,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		const out: Conflict[] = [];
 		for (const rid of form.resourceIds) {
 			const label = timeline.meta?.rows.find((r) => r.id === rid)?.label ?? rid;
-			for (const ev of timeline.eventsOf(rid)) if (!isSelf(ev) && overlaps(ev)) out.push({ key: rid + ev.id, rid, label, ev });
+			for (const ev of timeline.eventsOf(rid)) if (!isSelf(ev) && overlaps(ev)) { const key = rid + ev.id; if (!handled.includes(key)) out.push({ key, rid, label, ev }); }
 		}
 		return out;
 	});
@@ -269,16 +273,17 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	});
 
 	/** every room that is free for the conflicting booking and not wanted by this booking, grouped; same group first */
-	function alternatives(c: Conflict) {
+	function alternatives(cs: Conflict[]) {
 		const rows = timeline.meta?.rows ?? [];
-		const own = rows.find((r) => r.id === c.rid)?.groupId;
-		const [s0, e0] = spanOf(c.ev);
+		const own = rows.find((r) => r.id === cs[0]?.rid)?.groupId;
 		const free = rows.filter(
 			(r) =>
 				r.kind === 'resource' &&
-				r.id !== c.rid &&
 				!form.resourceIds.includes(r.id) &&
-				!timeline.eventsOf(r.id).some((e) => e.linkId !== c.ev.linkId && spanOf(e)[0] < e0 && spanOf(e)[1] > s0)
+				cs.every((c) => {
+					const [s0, e0] = spanOf(c.ev);
+					return !timeline.eventsOf(r.id).some((e) => e.linkId !== c.ev.linkId && spanOf(e)[0] < e0 && spanOf(e)[1] > s0);
+				})
 		);
 		return (timeline.meta?.groups ?? [])
 			.map((g) => ({ label: g.label, own: g.id === own, items: free.filter((r) => r.groupId === g.id) }))
@@ -286,18 +291,29 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			.sort((a, b) => Number(b.own) - Number(a.own));
 	}
 
-	async function resolve(c: Conflict, action: 'release' | 'move') {
-		resolving = c.key;
+	async function resolve(cs: Conflict[], action: 'release' | 'move', to?: string) {
+		resolving = true;
 		saveError = null;
 		try {
-			const res = await resolveConflict({ rowId: c.rid, eventId: c.ev.id, action, toResourceId: action === 'move' ? moveTo[c.key] : undefined });
-			timeline.applyFresh(res.fresh);
+			for (const c of cs) {
+				const res = await resolveConflict({ rowId: c.rid, eventId: c.ev.id, action, toResourceId: action === 'move' ? to : undefined });
+				timeline.applyFresh(res.fresh);
+				handled.push(c.key);
+				picked = picked.filter((k) => k !== c.key);
+			}
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'Could not update the booking';
 		} finally {
-			resolving = null;
+			resolving = false;
 		}
 	}
+	// the tab disappears with the last conflict
+	$effect(() => {
+		if (tab === 'conflicts' && !conflicts.length) tab = 'details';
+	});
+	const pickedConflicts = $derived(conflicts.filter((c) => picked.includes(c.key)));
+	const bulkAlts = $derived(alternatives(pickedConflicts));
+
 	const retreatGap = $derived.by(() => {
 		const cal = timeline.meta?.rows.find((r) => r.id === form.calendar);
 		if (!cal || !/retreat/i.test(cal.label)) return null;
@@ -567,12 +583,33 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 			{#if conflicts.length}
 				<TabItem key="conflicts" title="Conflicts ({conflicts.length})">
 						<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
-						{#each conflicts as c (c.key)}
-							{@const alts = alternatives(c)}
-							<div class="space-y-2 rounded-lg border border-line p-3">
-								<div class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></div>
+						{#if conflicts.length > 1}
+							<div class="space-y-2 rounded-lg bg-surface-2 p-3">
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" checked={picked.length === conflicts.length} onchange={(e) => (picked = e.currentTarget.checked ? conflicts.map((c) => c.key) : [])} />
+									Select all ({picked.length}/{conflicts.length})
+								</label>
 								<div class="flex flex-wrap items-center gap-2">
-									<Button size="xs" color="alternative" disabled={resolving === c.key} onclick={() => resolve(c, 'release')}>Release room</Button>
+									<Button size="xs" color="alternative" disabled={!picked.length || resolving} onclick={() => resolve(pickedConflicts, 'release')}>Release selected</Button>
+									<select class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60" bind:value={bulkTo} disabled={!pickedConflicts.length || !bulkAlts.length} aria-label="Move the selected reservations to">
+										<option value={undefined} disabled>Move selected to…</option>
+										{#each bulkAlts as g (g.label)}
+											<optgroup label={g.label}>{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}</optgroup>
+										{/each}
+									</select>
+									<Button size="xs" disabled={!bulkTo || !pickedConflicts.length || resolving} onclick={() => resolve(pickedConflicts, 'move', bulkTo)}>Move</Button>
+								</div>
+							</div>
+						{/if}
+						{#each conflicts as c (c.key)}
+							{@const alts = alternatives([c])}
+							<div class="space-y-2 rounded-lg border border-line p-3">
+								<label class="flex items-start gap-2 text-sm">
+									<input type="checkbox" class="mt-1" value={c.key} bind:group={picked} />
+									<span><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></span>
+								</label>
+								<div class="flex flex-wrap items-center gap-2">
+									<Button size="xs" color="alternative" disabled={resolving} onclick={() => resolve([c], 'release')}>Release room</Button>
 									<select
 										class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60"
 										bind:value={moveTo[c.key]}
@@ -586,7 +623,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 											</optgroup>
 										{/each}
 									</select>
-									<Button size="xs" disabled={!moveTo[c.key] || resolving === c.key} onclick={() => resolve(c, 'move')}>Move</Button>
+									<Button size="xs" disabled={!moveTo[c.key] || resolving} onclick={() => resolve([c], 'move', moveTo[c.key])}>Move</Button>
 								</div>
 								{#if !alts.length}<p class="text-xs text-muted">No free room for these dates: all {(timeline.meta?.rows ?? []).filter((r) => r.kind === 'resource').length} room calendars are either part of this booking or already booked.</p>{/if}
 							</div>
