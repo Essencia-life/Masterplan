@@ -314,14 +314,15 @@ export async function rowsForVisitor(): Promise<CalendarMeta> {
 
 const opaque = (v: string) => createHash('sha256').update(v).digest('hex').slice(0, 12);
 
-/** Anonymous visitors see availability only: no titles, notes, declines; link ids are hashed. */
+/** Anonymous visitors see availability only: no titles (timed events show the hours), notes, declines; link ids are hashed. */
 export function forVisitor(events: CalEvent[]): CalEvent[] {
 	if (currentUser()) return events;
 	return events.map((e) => ({
 		id: opaque(e.id),
 		rowId: e.rowId,
 		linkId: opaque(e.linkId),
-		title: 'Booked',
+		// timed events show their hours ("09:00–11:00"), all-day ones just "Booked"
+		title: e.fromLocal && e.toLocal ? `${e.fromLocal.slice(11)}–${e.toLocal.slice(11)}` : 'Booked',
 		start: e.start,
 		end: e.end,
 		status: e.status,
