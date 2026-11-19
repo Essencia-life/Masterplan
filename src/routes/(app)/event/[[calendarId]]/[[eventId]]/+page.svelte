@@ -500,7 +500,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						<Textarea id="f-desc" class="w-full" rows={4} bind:value={form.description} />
 					</div>
 			</TabItem>
-			<TabItem key="resources" title="Resources ({form.resourceIds.length})">
+			<TabItem key="resources" title="Rooms ({form.resourceIds.length})">
 					{#each resourceGroups as g (g.id)}
 						<fieldset>
 							<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
