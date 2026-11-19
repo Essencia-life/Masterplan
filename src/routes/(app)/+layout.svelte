@@ -9,7 +9,7 @@
 	import { calendarIdFromSlug, calendarSlug, isResourceId } from '#lib/calendar-id';
 	import logo from '#lib/assets/logo_tree.png';
 	import { Timeline, setTimeline } from '#lib/timeline.svelte';
-	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, moonKey, moonPath, moonPhase } from '#lib/time';
+	import { N_DAYS, TODAY, clampDay, dayToDate, dayToIso, isoToDay, localTodayIso, moonKey, moonPath, moonPhase } from '#lib/time';
 	import type { CalEvent, RowInfo } from '#lib/types';
 
 	let { children, data }: LayoutProps = $props();
@@ -261,14 +261,25 @@
 	}
 	const go = (weeks: number) => scroller?.scrollBy({ left: weeks * 7 * DAYW, behavior: 'smooth' });
 
+	/** the day marker follows the clock: a tab that stays open past midnight moves it to the new day */
+	let today = $state(TODAY);
+	const tickToday = () => (today = isoToDay(localTodayIso()));
+
 	onMount(() => {
 		timeline.restore();
+		// the interval is throttled in background tabs, so a returning tab checks right away
+		const clock = setInterval(tickToday, 60_000);
+		document.addEventListener('visibilitychange', tickToday);
 		void scrollToDay(TODAY, false).then(() => (scrollX = scroller?.scrollLeft ?? 0));
 		const ro = new ResizeObserver(() => (viewW = scroller!.clientWidth));
 		ro.observe(scroller!);
 		viewW = scroller!.clientWidth;
 		scroller!.addEventListener('touchmove', blockScroll, { passive: false });
-		return () => ro.disconnect();
+		return () => {
+			ro.disconnect();
+			clearInterval(clock);
+			document.removeEventListener('visibilitychange', tickToday);
+		};
 	});
 
 	let ticking = false;
@@ -310,14 +321,14 @@
 		{/if}
 		<div class="hidden items-center gap-1 sm:flex">
 			<Button size="sm" color="alternative" onclick={() => go(-1)} aria-label="Previous week"><ChevronLeft size={18} /></Button>
-			<Button size="sm" color="alternative" onclick={() => scrollToDay(TODAY)}>Today</Button>
+			<Button size="sm" color="alternative" onclick={() => scrollToDay(today)}>Today</Button>
 			<Button size="sm" color="alternative" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></Button>
 			{#if data.user}<Button size="sm" onclick={() => goto('/event', { reset: false })}>New booking</Button>{/if}
 		</div>
 		<div class="sm:hidden">
 			<Button id="more-menu" size="sm" color="alternative" aria-label="More"><Ellipsis size={18} /></Button>
 			<Dropdown triggeredBy="#more-menu" simple bind:isOpen={menuOpen}>
-				{#each [['Today', () => scrollToDay(TODAY)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ...(data.user ? [['New booking', () => goto('/event', { reset: false })], ['Sign out', () => (document.getElementById('logout-form') as HTMLFormElement).requestSubmit()]] : [['Sign in', () => (location.href = signInUrl)]])] as [label, fn] (label)}
+				{#each [['Today', () => scrollToDay(today)], ['Previous week', () => go(-1)], ['Next week', () => go(1)], ...(data.user ? [['New booking', () => goto('/event', { reset: false })], ['Sign out', () => (document.getElementById('logout-form') as HTMLFormElement).requestSubmit()]] : [['Sign in', () => (location.href = signInUrl)]])] as [label, fn] (label)}
 					<DropdownItem class="whitespace-nowrap" onclick={() => { (fn as () => void)(); menuOpen = false; }}>{label}</DropdownItem>
 				{/each}
 			</Dropdown>
@@ -365,7 +376,7 @@
 									class:weekend={isWeekend(d)}
 									class:month-start={dom(d) === 1}
 									class:snap-always={dom(d) === 1}
-									class:today={d === TODAY}
+									class:today={d === today}
 									style="left:{d * DAYW}px;width:{DAYW}px"
 								>
 									<span class="text-muted">{wd(d)}</span>
@@ -398,8 +409,8 @@
 						{#if dom(d) === 1}
 							<div class="absolute top-0 h-full border-l-2 border-line" style="left:{d * DAYW}px"></div>
 						{/if}
-						{#if isWeekend(d) || d === TODAY}
-							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === TODAY ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
+						{#if isWeekend(d) || d === today}
+							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === today ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
 						{/if}
 					{/each}
 				</div>

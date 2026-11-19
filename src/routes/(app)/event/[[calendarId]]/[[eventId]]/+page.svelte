@@ -9,7 +9,7 @@
 	import { calendarIdFromSlug } from '#lib/calendar-id';
 	import { overlaps as overlapsSpan, spanOf } from '#lib/conflicts';
 	import { getTimeline } from '#lib/timeline.svelte';
-	import { TODAY, dayToIso, exclusiveEndIso, isoToDay, toMinutes } from '#lib/time';
+	import { dayToIso, exclusiveEndIso, isoToDay, localTodayIso, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
 import { newParticipant, participantKind, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
 import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
@@ -104,7 +104,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		} else {
 			const row = pathCalendar ?? sp.get('row');
 			const isMain = !!row && !row.endsWith('@resource.calendar.google.com');
-			const from = sp.get('from') ?? dayToIso(TODAY);
+			const from = sp.get('from') ?? localTodayIso();
 			const to = sp.get('to');
 			form = {
 				id: undefined,
