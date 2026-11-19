@@ -330,8 +330,8 @@ export function forVisitor(events: CalEvent[]): CalEvent[] {
 		id: opaque(e.id),
 		rowId: e.rowId,
 		linkId: opaque(e.linkId),
-		// timed events show their hours ("09:00–11:00"), all-day ones just "Booked"
-		title: e.fromLocal && e.toLocal ? `${e.fromLocal.slice(11)}–${e.toLocal.slice(11)}` : 'Booked',
+		// timed events show their hours ("09:00–11:00"), all-day ones just "Booked" ("Reserved" if unconfirmed)
+		title: e.fromLocal && e.toLocal ? `${e.fromLocal.slice(11)}–${e.toLocal.slice(11)}` : e.status === 'tentative' ? 'Reserved' : 'Booked',
 		start: e.start,
 		end: e.end,
 		status: e.status,
