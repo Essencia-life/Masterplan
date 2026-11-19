@@ -8,6 +8,3 @@ export const emailHash = (email: string) => createHash('sha256').update(email.tr
 
 /** Marks a mail as sent to one person for one event (the cron claims it before sending); the value is the send time. */
 export const mailKey = (slug: string, eventId: string, email: string) => `${PREFIX}mail:${slug}:${eventId}:${emailHash(email)}`;
-
-/** The key before the prefix and the hash. shortcut: only read to carry old markers over, delete with the 120 days the markers live (CLAIM_DAYS), then the next deploy can drop it. */
-export const legacyMailKey = (slug: string, eventId: string, email: string) => `mail:${slug}:${eventId}:${email.trim().toLowerCase()}`;

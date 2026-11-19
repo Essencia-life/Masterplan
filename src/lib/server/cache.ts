@@ -84,32 +84,18 @@ export async function invalidateRows(rowIds: string[]) {
 /** True when Redis is configured: "send once" markers need shared storage, memory would not survive a serverless instance. */
 export const canClaim = !!redis;
 
-/**
- * Atomically claims `key` for `ttlSeconds` (the value is the time of the claim); false when somebody already did.
- * `legacyKey`: the key an older version used; a marker found there is moved to `key` (so nobody is mailed twice after the rename). Needs Redis (see canClaim).
- */
-export async function claimOnce(key: string, ttlSeconds: number, legacyKey?: string): Promise<boolean> {
+/** Atomically claims `key` for `ttlSeconds` (the value is the time of the claim); false when somebody already did. Needs Redis (see canClaim). */
+export async function claimOnce(key: string, ttlSeconds: number): Promise<boolean> {
 	if (!redis) throw new Error('Upstash Redis is not configured');
-	if (legacyKey) {
-		const old = await redis.get(legacyKey);
-		if (old != null) {
-			await redis.set(key, typeof old === 'string' ? old : new Date().toISOString(), { nx: true, ex: ttlSeconds });
-			await redis.del(legacyKey);
-			return false;
-		}
-	}
 	return (await redis.set(key, new Date().toISOString(), { nx: true, ex: ttlSeconds })) === 'OK';
 }
 
-/** When each key was claimed: the ISO time, "" for a claim from before times were stored, null for none. `legacyKeys[i]` is looked up when `keys[i]` is empty. */
-export async function claimedAt(keys: string[], legacyKeys: string[] = []): Promise<(string | null)[]> {
+/** When each key was claimed: the ISO time, "" for a claim from before times were stored, null for none. */
+export async function claimedAt(keys: string[]): Promise<(string | null)[]> {
 	if (!redis || !keys.length) return keys.map(() => null);
 	try {
-		const values = await redis.mget<unknown[]>(...keys, ...legacyKeys);
-		return keys.map((_, i) => {
-			const v = values[i] ?? values[keys.length + i];
-			return v == null ? null : typeof v === 'string' ? v : '';
-		});
+		const values = await redis.mget<unknown[]>(...keys);
+		return values.map((v) => (v == null ? null : typeof v === 'string' ? v : ''));
 	} catch (e) {
 		console.error('claims unavailable', e);
 		return keys.map(() => null);
