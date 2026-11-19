@@ -108,7 +108,7 @@ Templates are named `<kind>-<what>`: `guest-welcome`, `guest-thanks`, `volunteer
 
 **Links** in the texts: `{{feedbackLink}}` is `MAIL_FEEDBACK_URL`. `{{telegramJoinLink}}` is asked per guest from the Orga invite endpoint (`MAIL_TELEGRAM_ENDPOINT`, the full URL of `GET /orga/api/telegram/invite`): query `name`, `departure` (YYYY-MM-DD) and `type` (`guest` or `volunteer`), the secret `ORGA_BOT_INVITE_SECRET_TOKEN` (the same value the Orga app checks) in the `x-secret-token` header, answer `{ "invite_link": "https://…" }`. If the endpoint is not set, the secret is missing, it times out (5 s), answers with an error or without a valid https link, `MAIL_TELEGRAM_FALLBACK_URL` is used; if that is empty too, the mail is not sent and retried at the next run. Both links are only looked up for templates that contain the placeholder, and they work bare (a clickable link) or as a target: `[Join us]({{telegramJoinLink}})`.
 
-**Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): the logo on the parchment background, a white message block with rounded top corners, a footer linking to essencia.life. The logo (`logo.png`, the website's `logo.avif` converted, because mail clients do not show AVIF) is sent inside every mail as an inline image. Gmail ignores web fonts, the serif falls back to Georgia.
+**Layout** is MJML in the brand colours (`src/lib/server/mail/layout.ts`): the logo on the parchment background, a white message block, a footer linking to essencia.life. The logo (`logo.png`, the website's `logo.avif` converted, because mail clients do not show AVIF) is sent inside every mail as an inline image. Gmail ignores web fonts, the serif falls back to Georgia.
 
 Setup:
 
