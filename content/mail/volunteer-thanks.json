@@ -4,6 +4,6 @@
     "days": 1,
     "when": "after"
   },
-  "message": "Hey {{name}},\n\nThank you for supporting us at Essência until {{departure}}! Your time and energy meant a lot to us and to everyone here.\n\nWe hope you had a good time and take lots of good memories with you. If you would like to tell us how it was for you, just reply to this email, we read every message.\n\nYou are always welcome back.\n\nCom carinho,\nYour Essência Community",
+  "message": "Hey {{name}},\n\nThank you for supporting us at Essência until {{departure}}! Your time and energy meant a lot to us and to everyone here.\n\nWe hope you had a good time and take lots of good memories with you. If you would like to tell us how it was for you, we would love to hear it. Your words help us grow:\n{{feedbackLink}}\n\nOr just reply to this email, we read every message.\n\nYou are always welcome back.\n\nCom carinho,\nYour Essência Community",
   "attachments": []
 }
