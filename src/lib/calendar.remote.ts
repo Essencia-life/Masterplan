@@ -8,6 +8,7 @@ import {
 	assertCanWrite,
 	dayOf,
 	eventsForRows,
+	currentUser,
 	forVisitor,
 	freshRows,
 	localDay,
@@ -15,6 +16,7 @@ import {
 	eventRange,
 	loadMeta,
 	requireUser,
+	rowsForVisitor,
 	resolveCalendarId,
 	resolveOrganizer,
 	serviceCalendar
@@ -36,6 +38,11 @@ export const getEvents = query(
 		to: isoDate
 	}),
 	async ({ rowIds, from, to }) => {
+		if (!currentUser()) {
+			const allowed = new Set((await rowsForVisitor()).rows.map((r) => r.id));
+			rowIds = rowIds.filter((id) => allowed.has(id));
+			if (!rowIds.length) return [];
+		}
 		const results = await eventsForRows(rowIds, from, to);
 		return forVisitor(results.flat());
 	}
