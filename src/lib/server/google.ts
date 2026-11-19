@@ -301,10 +301,19 @@ export async function assertCanWrite(calendarId: string) {
 	if (role !== 'owner' && role !== 'writer') error(403, 'You do not have write access to this calendar');
 }
 
+const PUBLIC_GROUPS = ['program', 'event spaces', 'guesthouse'];
+
+/** signed-out visitors only see these groups (matched by label, case-insensitive) */
+export function publicMeta(meta: CalendarMeta): CalendarMeta {
+	const groups = meta.groups.filter((g) => PUBLIC_GROUPS.includes(g.label.trim().toLowerCase()));
+	const ids = new Set(groups.map((g) => g.id));
+	return { groups, rows: meta.rows.filter((r) => ids.has(r.groupId)) };
+}
+
 /** rows as the current visitor may use them: `writable` follows the user's own calendar settings */
 export async function rowsForVisitor(): Promise<CalendarMeta> {
 	const { meta } = await loadMeta();
-	if (!currentUser()) return meta;
+	if (!currentUser()) return publicMeta(meta);
 	const roles = await userRoles().catch(() => new Map<string, string>());
 	return {
 		groups: meta.groups,
