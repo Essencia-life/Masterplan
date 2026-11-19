@@ -504,12 +504,15 @@
 		</div>
 
 		{#if panelOpen}
+			<!-- mobile: a full-screen scroller with a transparent spacer on top; scrolling lifts the sheet until it fills the screen (header and tabs stick), then the content moves.
+			     md and up: a column next to the timeline. -->
 			<aside
 				transition:motion
-				class="fixed inset-x-0 bottom-0 z-40 flex max-h-[58vh] flex-col overflow-hidden rounded-t-2xl border-t border-line bg-surface shadow-sheet md:static md:max-h-none md:w-[380px] md:shrink-0 md:rounded-none md:border-t-0 md:border-l md:shadow-sheet"
+				class="pointer-events-none fixed inset-0 z-40 overflow-y-auto overscroll-contain md:pointer-events-auto md:static md:flex md:w-[380px] md:shrink-0 md:flex-col md:overflow-hidden md:border-l md:border-line md:bg-surface md:shadow-sheet"
 			>
+				<div class="h-[42dvh] md:hidden" aria-hidden="true"></div>
 				<!-- fixed width inside, so the content does not reflow while the column grows -->
-				<div class="flex min-h-0 w-full flex-1 flex-col md:w-[380px] md:shrink-0">{@render children()}</div>
+				<div class="sheet pointer-events-auto flex min-h-[58dvh] w-full flex-col rounded-t-2xl border-t border-line bg-surface shadow-sheet md:min-h-0 md:w-[380px] md:flex-1 md:shrink-0 md:rounded-none md:border-t-0 md:shadow-none">{@render children()}</div>
 			</aside>
 		{:else}
 			<div class="hidden">{@render children()}</div>
@@ -588,6 +591,15 @@
 		height: 32px;
 		display: flex;
 		align-items: center;
+	}
+	/* the tab bar sticks below the panel header while the sheet scrolls as a whole (mobile) */
+	@media (max-width: 767px) {
+		.sheet :global([role='tablist']) {
+			position: sticky;
+			top: 3.5rem;
+			z-index: 10;
+			background: var(--app-surface);
+		}
 	}
 	.evt.tentative {
 		opacity: 0.7;

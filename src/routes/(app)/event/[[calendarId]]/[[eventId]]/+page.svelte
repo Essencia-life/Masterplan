@@ -389,12 +389,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
 
-<div class="flex items-center gap-2 border-b border-line px-4 py-3">
+<div class="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-surface px-4 md:static">
 	<h2 class="mr-auto text-xl">{eventId ? 'Edit booking' : 'New booking'}</h2>
 	<CloseButton onclick={close} />
 </div>
 
-<div class="flex min-h-0 flex-1 flex-col">
+<div class="flex min-h-0 flex-1 flex-col md:overflow-hidden">
 	<div class="space-y-2 px-4 pt-3 empty:hidden">
 		{#if loadError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{loadError}</p>{/if}
 		{#if conflicts.length}
@@ -408,7 +408,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		<div class="flex flex-1 items-center justify-center" role="status" aria-label="Loading booking"><Spinner size="10" /></div>
 	{:else}
 		<!-- the tab bodies scroll, the bar and footer stay -->
-		<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="mt-0 min-h-0 flex-1 space-y-3 overflow-y-auto rounded-none bg-transparent p-4 dark:bg-transparent">
+		<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="mt-0 min-h-0 flex-1 space-y-3 md:overflow-y-auto rounded-none bg-transparent p-4 dark:bg-transparent">
 			<TabItem key="details" title="Details">
 					<div>
 						<Label for="f-title" class="mb-1">Title</Label>
@@ -598,7 +598,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	{#if saveError}<p class="px-4 pb-2 text-sm text-secondary-700 dark:text-secondary-300">{saveError}</p>{/if}
 </div>
 
-<div class="flex items-center gap-2 border-t border-line p-3">
+<div class="sticky bottom-0 z-20 flex items-center gap-2 border-t border-line bg-surface p-3 md:static">
 	{#if form.id && inSeriesNow}
 		<ButtonGroup size="sm">
 			<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>
