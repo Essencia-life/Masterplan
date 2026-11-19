@@ -5,7 +5,13 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="robots" content="noindex" />
 		<title>Content Manager</title>
-		<link rel="stylesheet" href="./editor.css">
+		<style>
+			/* the placeholder components ({{name}}, …) sit inside the text line */
+			.wrapper.component.inline {
+				width: unset !important;
+				white-space: nowrap;
+			}
+		</style>
 	</head>
 	<body>
 		<script>window.CMS_MANUAL_INIT = true;</script>
@@ -23,7 +29,7 @@
 					id,
 					label,
 					fields: [],
-					pattern: new RegExp('\\{\\{' + id + '\\}\\}'), // no ^$ anchors: matches inside a line too (editor.css shows the components inline)
+					pattern: new RegExp('\\{\\{' + id + '\\}\\}'), // no ^$ anchors: matches inside a line too (the style above shows the components inline)
 					fromBlock: () => ({}),
 					toBlock: () => '{{' + id + '}}',
 					toPreview: () => '{{' + id + '}}'
