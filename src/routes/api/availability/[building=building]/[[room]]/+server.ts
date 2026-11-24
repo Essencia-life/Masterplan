@@ -38,6 +38,6 @@ export const GET: RequestHandler = async ({ params, url, setHeaders }) => {
 	return json({
 		building: group.label,
 		month,
-		rooms: rooms.map((r) => ({ room: slug(r.label), name: r.label, busy: (calendars[r.id]?.busy ?? []).map((b) => ({ start: b.start, end: b.end })) }))
+		rooms: rooms.map((r) => ({ room: slug(r.label), name: r.label, capacity: r.capacity ?? null, busy: (calendars[r.id]?.busy ?? []).map((b) => ({ start: b.start, end: b.end })) }))
 	});
 };

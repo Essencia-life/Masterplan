@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { dayOf, eventRange, localDay, localTime, normalize, parseCalendarName, parseResourceName } from './parse';
 
 describe('parseResourceName', () => {
-	it('reads group, floor and name and drops the capacity', () => {
-		expect(parseResourceName('Farmhouse-1-Room 5 (4)')).toEqual({ group: 'Farmhouse', floor: '1', name: 'Room 5' });
+	it('reads group, floor and name and returns the capacity', () => {
+		expect(parseResourceName('Farmhouse-1-Room 5 (4)')).toEqual({ group: 'Farmhouse', floor: '1', name: 'Room 5', capacity: 4 });
 	});
 	it('keeps dashes inside the name', () => {
-		expect(parseResourceName('Farmhouse-0-Big-Hall (50)')).toEqual({ group: 'Farmhouse', floor: '0', name: 'Big-Hall' });
+		expect(parseResourceName('Farmhouse-0-Big-Hall (50)')).toEqual({ group: 'Farmhouse', floor: '0', name: 'Big-Hall', capacity: 50 });
 	});
 	it('works without floor', () => {
-		expect(parseResourceName('Garden-Yurt (12)')).toEqual({ group: 'Garden', floor: '', name: 'Yurt' });
+		expect(parseResourceName('Garden-Yurt (12)')).toEqual({ group: 'Garden', floor: '', name: 'Yurt', capacity: 12 });
 	});
 	it('falls back to the group "Other"', () => {
-		expect(parseResourceName('Projector')).toEqual({ group: 'Other', floor: '', name: 'Projector' });
+		expect(parseResourceName('Projector')).toEqual({ group: 'Other', floor: '', name: 'Projector', capacity: undefined });
 	});
 });
 

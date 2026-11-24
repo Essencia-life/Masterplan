@@ -133,7 +133,7 @@ export async function loadMeta(force = false) {
 	for (const { e, p } of resources) {
 		const groupId = groupOf(p.group);
 		resourceIds.add(e.id!);
-		rows.push({ id: e.id!, label: p.name, kind: 'resource', groupId, color: e.backgroundColor ?? '#8b8372', available: true, writable: false });
+		rows.push({ id: e.id!, label: p.name, kind: 'resource', groupId, color: e.backgroundColor ?? '#8b8372', available: true, writable: false, capacity: p.capacity });
 	}
 
 	const used = new Set(rows.map((r) => r.groupId));
