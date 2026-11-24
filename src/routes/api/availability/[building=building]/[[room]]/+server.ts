@@ -3,9 +3,6 @@ import type { RequestHandler } from './$types';
 import { TIME_ZONE, localTodayIso } from '#lib/time';
 import { loadMeta, serviceCalendar, slug, withBackoff } from '#lib/server/google';
 
-/** Only these groups are public, matched by label ("Event Spaces" → /api/availability/event-spaces). */
-const PUBLIC_GROUPS = ['event spaces', 'guesthouse', 'tents', 'yurts'];
-
 /**
  * Free/busy of the room calendars of one building (= group), or of one room, for a month.
  * GET /api/availability/guesthouse?month=2026-12  (month defaults to the current one)
@@ -16,7 +13,7 @@ export const GET: RequestHandler = async ({ params, url, setHeaders }) => {
 	if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) error(400, 'month must be YYYY-MM');
 
 	const { meta } = await loadMeta();
-	const group = meta.groups.find((g) => g.id === 'g-' + params.building && PUBLIC_GROUPS.includes(g.label.trim().toLowerCase()));
+	const group = meta.groups.find((g) => g.id === 'g-' + params.building);
 	if (!group) error(404, 'Unknown building');
 	const rooms = meta.rows.filter((r) => r.kind === 'resource' && r.groupId === group.id && (!params.room || slug(r.label) === params.room));
 	if (!rooms.length) error(404, 'Unknown room');
