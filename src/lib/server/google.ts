@@ -82,7 +82,7 @@ export function serviceCalendar() {
 }
 
 
-const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+export const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
 const IGNORED_NAMES = /^(private|phases of the moon)$/i;
 const isNoise = (id: string) => /#(holiday|contacts)@|holiday@group\.v\.calendar\.google\.com/.test(id);
