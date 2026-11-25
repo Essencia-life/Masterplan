@@ -458,7 +458,9 @@
 									aria-pressed={timeline.hidden.has(row.id)}
 									onclick={() => timeline.toggleRow(row.id)}
 								>
-									<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{timeline.hidden.has(row.id) ? 'transparent' : row.color};box-shadow:inset 0 0 0 2px {row.color}"></span>
+									{#if row.kind === 'calendar'}
+										<span class="mt-[5px] size-2.5 shrink-0 rounded-full" style="background:{timeline.hidden.has(row.id) ? 'transparent' : row.color};box-shadow:inset 0 0 0 2px {row.color}"></span>
+									{/if}
 									<span class="truncate" class:text-muted={timeline.hidden.has(row.id)}>{row.label}</span>
 									{#if timeline.hidden.has(row.id)}<EyeOff size={14} class="mt-[3px] shrink-0 text-muted" />{/if}
 								</button>
