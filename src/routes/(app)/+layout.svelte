@@ -417,9 +417,10 @@
 
 				<!-- groups & rows -->
 				{#each groups as g (g.id)}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events (the label button below is the keyboard target; its click bubbles here) -->
 					<div
-						class="relative z-[1] flex border-b border-line bg-surface-2"
+						class="relative z-[1] flex cursor-pointer border-b border-line bg-surface-2"
+						onclick={() => timeline.toggle(g.id)}
 						class:drop-before={dropAt?.id === g.id && !dropAt.after && dragGroup !== g.id}
 						class:drop-after={dropAt?.id === g.id && dropAt.after && dragGroup !== g.id}
 						class:opacity-60={dragGroup === g.id}
@@ -438,7 +439,6 @@
 							ondragend={() => (dragGroup = dropAt = null)}
 							class="sticky left-0 z-10 flex shrink-0 cursor-grab items-center gap-1 bg-surface-2 px-2 text-left whitespace-nowrap"
 							style="height:29px;min-width:{LABW}px"
-							onclick={() => timeline.toggle(g.id)}
 							aria-expanded={g.open}
 						>
 							<ChevronDown size={16} class={g.open ? '' : '-rotate-90'} />
