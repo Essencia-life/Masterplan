@@ -80,6 +80,8 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 	let deleteOpen = $state(false);
 	/** first day when the event was opened: "following" and "all" cannot move it */
 	let savedStart = $state('');
+	/** organizer calendar unknown: the booking is shown, nothing can be changed */
+	let readOnly = $state(false);
 	const dayChanged = $derived(!!form.id && !!savedStart && form.start !== savedStart);
 
 	// (re)initialise whenever the route changes
@@ -89,6 +91,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		loadError = saveError = null;
 		loading = !!id;
 		mailSent = {};
+		readOnly = false;
 		if (id) {
 			getEvent({ eventId: id, calendar: pathCalendar })
 				.then((e: EventDetail) => {
@@ -102,6 +105,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					jobsBase = JSON.stringify([e.jobs, e.type]);
 					partsBase = JSON.stringify(e.participants);
 					mailSent = e.mailSent;
+					readOnly = !!e.readOnly;
 				})
 				.catch((e: unknown) => (loadError = e instanceof Error ? e.message : 'Could not load the event'))
 				.finally(() => id === eventId && (loading = false));
@@ -328,7 +332,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		return null;
 	});
 
-	const valid = $derived(form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !partsError && !repeatError);
+	const valid = $derived(!readOnly && form.calendar && form.title.trim() && form.start && form.end && form.end >= form.start && !jobsError && !partsError && !repeatError);
 
 	// jobs and repeat describe the series, so they are saved for all events unless chosen otherwise
 	async function save(scope: 'this' | 'following' | 'all' = repeat || (jobsEnabled && jobsDirty) ? 'all' : 'this') {
@@ -418,6 +422,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 				<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {conflicts.length} conflicting {conflicts.length === 1 ? 'booking' : 'bookings'} – release or move them</Badge>
 			</button>
 		{/if}
+		{#if readOnly}<Badge color="yellow" large class="w-full justify-start whitespace-normal">ⓘ Read-only: this room booking belongs to a calendar that is not part of the Masterplan, so it cannot be changed here.</Badge>{/if}
 		{#if retreatGap}<Badge color="yellow" large class="w-full justify-start whitespace-normal">⚠ {retreatGap}</Badge>{/if}
 	</div>
 	{#if loading}
@@ -426,6 +431,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 		<!-- the tab bodies scroll, the bar and footer stay -->
 		<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="mt-0 min-h-0 flex-1 space-y-3 md:overflow-y-auto rounded-none bg-transparent p-4 dark:bg-transparent">
 			<TabItem key="details" title="Details">
+<fieldset disabled={readOnly} class="contents">
 					<div>
 						<Label for="f-title" class="mb-1">Title</Label>
 						<Input id="f-title" bind:value={form.title} placeholder="e.g. Yoga retreat" />
@@ -515,8 +521,10 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						<Label for="f-desc" class="mb-1">Notes</Label>
 						<Textarea id="f-desc" class="w-full" rows={4} bind:value={form.description} />
 					</div>
+</fieldset>
 			</TabItem>
 			<TabItem key="resources" title="Rooms ({form.resourceIds.length})">
+<fieldset disabled={readOnly} class="contents">
 					{#each resourceGroups as g (g.id)}
 						<fieldset>
 							<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
@@ -532,9 +540,11 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					{:else}
 						<p class="text-sm text-muted">No resource calendars found. Subscribe the service account's user to them first.</p>
 					{/each}
+</fieldset>
 			</TabItem>
 			{#if partsEnabled}
 				<TabItem key="participants" title="People ({form.participants.length})">
+<fieldset disabled={readOnly} class="contents">
 					{#if mailHint}<p class="text-sm text-muted">{mailHint}</p>{/if}
 					{#each form.participants as p, i (i)}
 						<div class="flex items-center gap-2">
@@ -546,10 +556,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 					{/each}
 					<Button size="xs" color="alternative" onclick={() => form.participants.push(newParticipant())}>Add person</Button>
 					{#if partsError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{partsError}</p>{/if}
+</fieldset>
 				</TabItem>
 			{/if}
 			{#if jobsEnabled}
 				<TabItem key="jobs" title="Jobs ({form.jobs.length})">
+<fieldset disabled={readOnly} class="contents">
 					<p class="text-sm text-muted">People sign up for these jobs in the Telegram week plan.</p>
 					{#if form.seriesId}<p class="text-xs text-muted">Save saves the jobs for all events of the series; the arrow next to Save has the other options.</p>{/if}
 					{#each form.jobs as job, i (i)}
@@ -578,10 +590,12 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						</div>
 					{/if}
 					{#if jobsError}<p class="text-sm text-secondary-700 dark:text-secondary-300">{jobsError}</p>{/if}
+</fieldset>
 				</TabItem>
 			{/if}
 			{#if conflicts.length}
 				<TabItem key="conflicts" title="Conflicts ({conflicts.length})">
+<fieldset disabled={readOnly} class="contents">
 						<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
 						{#if conflicts.length > 1}
 							<div class="space-y-2 rounded-lg bg-surface-2 p-3">
@@ -628,6 +642,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 								{#if !alts.length}<p class="text-xs text-muted">No free room for these dates: all {(timeline.meta?.rows ?? []).filter((r) => r.kind === 'resource').length} room calendars are either part of this booking or already booked.</p>{/if}
 							</div>
 						{/each}
+</fieldset>
 				</TabItem>
 			{/if}
 		</Tabs>
@@ -638,15 +653,15 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 <div class="sticky bottom-0 z-20 flex items-center gap-2 border-t border-line bg-surface p-3 md:static">
 	{#if form.id && inSeriesNow}
 		<ButtonGroup size="sm">
-			<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>
-			<Button color="red" outline size="sm" id="delete-scope" aria-label="More ways to delete" disabled={busy || loading}><ChevronDown size={16} /></Button>
+			<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading || readOnly}>Delete</Button>
+			<Button color="red" outline size="sm" id="delete-scope" aria-label="More ways to delete" disabled={busy || loading || readOnly}><ChevronDown size={16} /></Button>
 		</ButtonGroup>
 		<Dropdown triggeredBy="#delete-scope" simple placement="top-start" bind:isOpen={deleteOpen}>
 			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('this'); }}>Delete only this event</DropdownItem>
 			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('following'); }}>Delete this and following events</DropdownItem>
 			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('all'); }}>Delete all events of the series</DropdownItem>
 		</Dropdown>
-	{:else if form.id}<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading}>Delete</Button>{/if}
+	{:else if form.id}<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading || readOnly}>Delete</Button>{/if}
 	<Button color="alternative" size="sm" class="ml-auto" onclick={close}>Cancel</Button>
 	{#if inSeriesNow}
 		<ButtonGroup size="sm">

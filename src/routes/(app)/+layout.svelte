@@ -298,11 +298,8 @@
 		return mobile ? fly(node, { y: 320, duration }) : slide(node, { axis: 'x', duration });
 	};
 	const panelOpen = $derived(!!page.route.id?.includes('/event/'));
-	/** room copy whose organizer's calendar is not part of the tool (private, other naming): it cannot be traced or edited */
-	const readOnly = (ev: CalEvent) => !!ev.originRow && !timeline.meta?.rows.some((r) => r.id === ev.originRow && r.kind === 'calendar');
-
 	function openEvent(ev: CalEvent) {
-		if (!data.user || ev.id.startsWith('optimistic:') || readOnly(ev)) return; // details are for signed-in users
+		if (!data.user || ev.id.startsWith('optimistic:')) return; // details are for signed-in users
 		goto(`/event/${calendarSlug(ev.rowId)}/${ev.id}`, { reset: false });
 	}
 </script>
@@ -478,7 +475,6 @@
 											class:long={it.e - it.s > 1}
 											class:tentative={it.ev.status === 'tentative'}
 											class:hot={hot === it.ev.linkId}
-											class:readonly={readOnly(it.ev)}
 											style="left:{it.s * DAYW + 1}px;width:{(it.e - it.s) * DAYW - 2}px;top:{PAD / 2 + it.lane * LANE}px;--c:{colorOf(it.ev, row.color)}"
 											onmousemove={(e) => showTip(e, it)}
 											onclick={() => openEvent(it.ev)}
@@ -614,10 +610,6 @@
 			z-index: 10;
 			background: var(--app-surface);
 		}
-	}
-	.evt.readonly {
-		cursor: default;
-		opacity: 0.75;
 	}
 	.evt.tentative {
 		opacity: 0.7;
