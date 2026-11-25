@@ -410,7 +410,7 @@
 							<div class="absolute top-0 h-full border-l-2 border-line" style="left:{d * DAYW}px"></div>
 						{/if}
 						{#if isWeekend(d) || d === today}
-							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === today ? 'var(--app-today)' : 'var(--app-weekend)'}"></div>
+							<div class="absolute top-0 h-full" style="left:{d * DAYW}px;width:{DAYW}px;background:{d === today ? 'var(--app-today)' : 'var(--app-weekend)'};{d === today ? 'box-shadow:inset 2px 0 0 var(--app-today-strong),inset -2px 0 0 var(--app-today-strong)' : ''}"></div>
 						{/if}
 					{/each}
 				</div>
@@ -540,6 +540,15 @@
 	}
 	.today {
 		background: var(--app-today);
+		box-shadow: inset 0 -3px 0 var(--app-today-strong);
+	}
+	.today > span:last-child {
+		border-radius: 9999px;
+		background: var(--app-today-strong);
+		color: var(--app-today-ink);
+		min-width: 1.5rem;
+		padding: 0.1rem 0.25rem;
+		text-align: center;
 	}
 	.evt {
 		background: color-mix(in oklab, var(--c) 88%, black);
