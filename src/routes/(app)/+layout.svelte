@@ -375,7 +375,7 @@
 									class="absolute top-0 flex h-full snap-start flex-col items-center justify-center border-l border-line-soft text-xs leading-tight"
 									class:weekend={isWeekend(d)}
 									class:month-start={dom(d) === 1}
-									class:snap-always={dom(d) === 1}
+									class:snap-always={dom(d) === 1 || d === today}
 									class:today={d === today}
 									style="left:{d * DAYW}px;width:{DAYW}px"
 								>
@@ -542,6 +542,14 @@
 	}
 	.today {
 		background: var(--app-today);
+	}
+	.today > span:last-child {
+		border-radius: 9999px;
+		background: var(--app-today-strong);
+		color: var(--app-today-ink);
+		min-width: 1.5rem;
+		padding: 0.1rem 0.25rem;
+		text-align: center;
 	}
 	.evt {
 		background: color-mix(in oklab, var(--c) 88%, black);
