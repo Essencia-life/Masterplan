@@ -40,6 +40,9 @@
 	// ----- virtual window (quantised so it rarely changes) -----
 	const visLo = $derived(Math.floor(scrollX / DAYW));
 	const visHi = $derived(Math.ceil((scrollX + viewW) / DAYW));
+	// today scrolled out of view: a chip sticks to that edge of the date header and jumps back
+	const todayLeft = $derived((today + 1) * DAYW <= scrollX);
+	const todayRight = $derived(today * DAYW >= scrollX + viewW - LABW);
 	const lo = $derived(Math.max(0, Math.floor((visLo - BUF) / STEP) * STEP));
 	const hi = $derived(Math.min(N_DAYS, Math.ceil((visHi + BUF) / STEP) * STEP));
 	const days = $derived(Array.from({ length: hi - lo }, (_, i) => lo + i));
@@ -383,6 +386,16 @@
 									<span class="text-sm font-bold">{dom(d)}</span>
 								</div>
 							{/each}
+							{#if todayLeft}
+								<div class="pointer-events-none absolute inset-0 flex items-center ">
+									<button type="button" class="pointer-events-auto sticky z-10 rounded-full bg-[var(--app-today-strong)] px-2.5 py-1 text-xs font-bold text-[var(--app-today-ink)] shadow" style="left:{LABW + 6}px" onclick={() => scrollToDay(today)}>‹ Today</button>
+								</div>
+							{/if}
+							{#if todayRight}
+								<div class="pointer-events-none absolute inset-0 flex items-center justify-end">
+									<button type="button" class="pointer-events-auto sticky z-10 rounded-full bg-[var(--app-today-strong)] px-2.5 py-1 text-xs font-bold text-[var(--app-today-ink)] shadow" style="right:6px" onclick={() => scrollToDay(today)}>Today ›</button>
+								</div>
+							{/if}
 						</div>
 					</div>
 					<div class="flex" style="height:28px">
