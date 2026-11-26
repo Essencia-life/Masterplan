@@ -325,6 +325,12 @@
 			<Button size="sm" color="alternative" onclick={() => go(1)} aria-label="Next week"><ChevronRight size={18} /></Button>
 			{#if data.user}<Button size="sm" onclick={() => goto('/event', { reset: false })}>New booking</Button>{/if}
 		</div>
+		<!-- mobile: sign in, or who is signed in, next to the menu -->
+		{#if data.user}
+			<span class="min-w-0 max-w-[9rem] truncate text-xs text-muted sm:hidden" title={data.user.email}>{data.user.email}</span>
+		{:else}
+			<Button href={signInUrl} data-sveltekit-reload size="sm" class="sm:hidden">Sign in</Button>
+		{/if}
 		<div class="sm:hidden">
 			<Button id="more-menu" size="sm" color="alternative" aria-label="More"><Ellipsis size={18} /></Button>
 			<Dropdown triggeredBy="#more-menu" simple bind:isOpen={menuOpen}>
