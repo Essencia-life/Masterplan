@@ -61,13 +61,16 @@ export const getEvent = query(
 				const calendarId = await resolveCalendarId(rowId);
 				let ev = (await serviceCalendar().events.get({ calendarId, eventId })).data;
 				let ownerRow = rowId;
+				let readOnly = false;
 				// a resource copy: jump to the organizer's event so edits go to the right place
 				if (ev.organizer && !ev.organizer.self && ev.iCalUID) {
+					readOnly = true;
 					for (const rid of calendars) {
 						const found = await serviceCalendar().events.list({ calendarId: await resolveCalendarId(rid), iCalUID: ev.iCalUID });
 						if (found.data.items?.[0]) {
 							ev = found.data.items[0];
 							ownerRow = rid;
+							readOnly = false;
 							break;
 						}
 					}
@@ -86,6 +89,7 @@ export const getEvent = query(
 					id: ev.id!,
 					linkId: ev.iCalUID ?? ev.id!,
 					calendar: ownerRow,
+					readOnly,
 					title: ev.summary ?? '',
 					start,
 					end,

@@ -42,6 +42,8 @@ export type CalEvent = {
 export type Fresh = { from: string; to: string; rows: Record<string, CalEvent[]> };
 
 export type EventDetail = {
+	/** a room copy whose organizer's calendar is not part of the tool: shown, but cannot be edited */
+	readOnly?: boolean;
 	id: string;
 	linkId: string;
 	calendar: string;
