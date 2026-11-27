@@ -262,6 +262,7 @@ export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): 
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : '';
 		if (/invalid_grant|invalid_token|Invalid Credentials/i.test(msg)) {
+			console.error('session ended by Google:', getRequestEvent().locals.user?.email, msg);
 			clearSession(getRequestEvent().cookies);
 			error(401, 'Your session expired, please sign in again');
 		}
