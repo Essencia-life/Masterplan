@@ -34,6 +34,10 @@ export class Timeline {
 	meta = $state<CalendarMeta | null>(null);
 	error = $state<string | null>(null);
 	loading = $state(0);
+	/** rows whose events are being fetched right now (spinner next to the group title) */
+	rowLoading = new SvelteSet<string>();
+	/** saves, deletes etc. running in a panel (spinner in the header) */
+	working = $state(0);
 	/** collapsed groups are never fetched; defaults to the groups with calendars until restore() ran */
 	expanded = new SvelteSet<string>();
 	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
@@ -164,6 +168,7 @@ export class Timeline {
 				const k = key(rowId, c);
 				if (this.loaded.has(k) || this.pending.has(k)) continue;
 				this.pending.add(k);
+				this.rowLoading.add(rowId);
 				todo.set(c, [...(todo.get(c) ?? []), rowId]);
 			}
 		await Promise.all(
@@ -181,7 +186,10 @@ export class Timeline {
 					this.error = e instanceof Error ? e.message : 'Could not load events';
 					for (const id of ids) this.loaded.add(key(id, c)); // avoid refetch loops; reload to retry
 				} finally {
-					for (const id of ids) this.pending.delete(key(id, c));
+					for (const id of ids) {
+						this.pending.delete(key(id, c));
+						if (![...this.pending].some((p) => p.startsWith(id + '|'))) this.rowLoading.delete(id);
+					}
 					this.loading--;
 				}
 			})
