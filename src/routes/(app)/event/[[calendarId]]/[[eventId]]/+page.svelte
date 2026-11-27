@@ -12,7 +12,7 @@
 	import { dayToIso, exclusiveEndIso, isoToDay, localTodayIso, toMinutes } from '#lib/time';
 	import type { CalEvent, EventDetail } from '#lib/types';
 import { newParticipant, participantKind, participantsProblem, supportsParticipants, type Participant } from '#lib/participants';
-import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
+import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify, supportsJobs, type Job } from '#lib/jobs';
 	import { MOON_PHASES, MOON_RELATIONS } from '#lib/moon';
 	import { moonDates, type Repeat } from '#lib/recurrence';
 
@@ -570,6 +570,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 								<Input class="flex-1" placeholder="e.g. Lunch chef" aria-label="Job title" bind:value={job.title} />
 								<Button size="xs" color="alternative" onclick={() => form.jobs.splice(i, 1)}>Remove</Button>
 							</div>
+							<Input class="w-full" placeholder="Description, shown folded under the job (optional)" aria-label="Job description" maxlength={200} bind:value={job.description} />
 							<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
 								<label class="flex items-center gap-2 text-sm">
 									Slots
@@ -582,6 +583,7 @@ import { jobsProblem, newJob, prepareJobs, slugify, supportsJobs, type Job } fro
 						</div>
 					{/each}
 					<Button size="xs" color="alternative" onclick={() => form.jobs.push(newJob())}>Add job</Button>
+					{#if form.jobs.length}<p class="text-xs text-muted">{jobsLength(prepareJobs(form.jobs))} of {MAX_JOBS_LENGTH} characters used</p>{/if}
 					{#if form.jobs.length}
 						<div>
 							<Label for="f-type" class="mb-1">Event key</Label>

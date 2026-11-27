@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLegacyJobs, jobsProblem, newJob, parseJobs, prepareJobs, slugify, supportsJobs } from './jobs';
+import { isLegacyJobs, jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, parseJobs, prepareJobs, slugify, supportsJobs } from './jobs';
 
 const job = (over: Partial<ReturnType<typeof newJob>> = {}) => ({ ...newJob(), title: 'Chef', ...over });
 
@@ -70,5 +70,26 @@ describe('parseJobs', () => {
 		expect(parseJobs(undefined)).toEqual([]);
 		expect(parseJobs('{nope')).toEqual([]);
 		expect(parseJobs('{"chef":{"title":"Chef","persons":[]}}')).toEqual([]);
+	});
+});
+
+describe('job descriptions', () => {
+	it('keeps a trimmed description and leaves an empty one out', () => {
+		const [a, b] = prepareJobs([job({ description: '  Bring a bowl  ' }), job({ title: 'B', description: '   ' })]);
+		expect(a.description).toBe('Bring a bowl');
+		expect('description' in b).toBe(false);
+	});
+	it('round-trips', () => {
+		const stored = prepareJobs([job({ key: 'chef', description: 'Starts at 11:00' })]);
+		expect(parseJobs(JSON.stringify(stored))).toEqual(stored);
+	});
+	it('limits one description', () => {
+		expect(jobsProblem([job({ description: 'x'.repeat(201) })])).toMatch(/at most 200/);
+	});
+	it('limits all the jobs together to what an extended property holds', () => {
+		const jobs = Array.from({ length: 6 }, (_, i) => job({ title: `Job ${i}`, description: 'x'.repeat(200) }));
+		expect(jobsLength(prepareJobs(jobs))).toBeGreaterThan(MAX_JOBS_LENGTH);
+		expect(jobsProblem(jobs)).toMatch(/too long/);
+		expect(jobsProblem(jobs.slice(0, 3))).toBeNull();
 	});
 });

@@ -9,6 +9,13 @@ import * as z from 'zod';
 export const JOB_CALENDARS = /community|event|retreat/i;
 export const supportsJobs = (groupLabel: string, calendarLabel: string) => JOB_CALENDARS.test(`${groupLabel} ${calendarLabel}`);
 
+/** Google cuts an extended property value after 1024 characters, which would break the JSON of all jobs. */
+export const MAX_JOBS_LENGTH = 1024;
+const MAX_DESCRIPTION = 200;
+
+/** Length of the `jobs` property for these jobs. */
+export const jobsLength = (jobs: Job[]) => JSON.stringify(jobs).length;
+
 export const jobSchema = z
 	.object({
 		/** internal name, stable once people have signed up (Telegram buttons, sign-up storage) */
@@ -18,14 +25,17 @@ export const jobSchema = z
 		/** the person is asked what they offer, only meaningful for a single slot */
 		askDetails: z.boolean(),
 		/** the daily agenda calls for help while the job is empty */
-		sos: z.boolean()
+		sos: z.boolean(),
+		/** short text shown folded under the job in the week plan */
+		description: z.string().trim().max(MAX_DESCRIPTION, `Description: at most ${MAX_DESCRIPTION} characters`).optional()
 	})
 	.refine((j) => !j.askDetails || j.slots === 1, { message: 'Asking for details needs exactly one slot', path: ['askDetails'] });
 
 export const jobsSchema = z
 	.array(jobSchema)
 	.max(12, 'At most 12 jobs')
-	.refine((jobs) => new Set(jobs.map((j) => j.key)).size === jobs.length, 'Job keys must be unique');
+	.refine((jobs) => new Set(jobs.map((j) => j.key)).size === jobs.length, 'Job keys must be unique')
+	.refine((jobs) => jobsLength(jobs) <= MAX_JOBS_LENGTH, `The jobs are too long (more than ${MAX_JOBS_LENGTH} characters), shorten the descriptions`);
 
 /** Stable name of a kind of event, e.g. "lunch"; part of the sign-up storage key. */
 export const typeSchema = z
@@ -35,7 +45,7 @@ export const typeSchema = z
 
 export type Job = z.infer<typeof jobSchema>;
 
-export const newJob = (): Job => ({ key: '', title: '', slots: 1, askDetails: false, sos: true });
+export const newJob = (): Job => ({ key: '', title: '', slots: 1, askDetails: false, sos: true, description: '' });
 
 /** "🧚 Fairy of the Week" → "fairy-of-the-week" */
 export const slugify = (s: string, max = 24) =>
@@ -59,7 +69,9 @@ export function prepareJobs(jobs: Job[]): Job[] {
 			for (let n = 2; used.has(key); n++) key = base + n;
 			used.add(key);
 		}
-		return { ...j, key, title: j.title.trim(), askDetails: j.askDetails && j.slots === 1 };
+		const { description, ...rest } = j;
+		// an empty description is left out, the characters of the property are limited
+		return { ...rest, key, title: j.title.trim(), askDetails: j.askDetails && j.slots === 1, ...(description?.trim() && { description: description.trim() }) };
 	});
 }
 
