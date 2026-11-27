@@ -405,6 +405,12 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 		}
 	}
 	const close = () => goto('/', { reset: false });
+	// the header spinner shows saves, deletes and room changes of this panel
+	$effect(() => {
+		if (!busy && !resolving) return;
+		timeline.working++;
+		return () => timeline.working--;
+	});
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
