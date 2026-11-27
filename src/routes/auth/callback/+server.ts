@@ -18,7 +18,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: env.GOOGLE_CLIENT_ID });
 	const p = ticket.getPayload();
 	if (!p?.email || !p.email_verified || p.hd !== env.ALLOWED_DOMAIN) error(403, `Only ${env.ALLOWED_DOMAIN} accounts can sign in`);
-	if (!tokens.refresh_token) error(400, 'Google did not return a refresh token, please sign in again');
+	// without the consent screen Google only returns a refresh token for the first grant: ask again, this time with it
+	if (!tokens.refresh_token) redirect(303, `/auth/login?consent=1&returnTo=${encodeURIComponent(saved.returnTo)}`);
 
 	setSession(cookies, url, { email: p.email, name: p.name ?? p.email, refreshToken: tokens.refresh_token });
 	redirect(303, safeReturnTo(saved.returnTo));

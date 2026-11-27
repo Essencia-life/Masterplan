@@ -14,7 +14,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		303,
 		client.generateAuthUrl({
 			access_type: 'offline', // refresh token, so the session outlives the 1h access token
-			prompt: 'consent',
+			// consent only when Google must issue a (new) refresh token: first sign-in or after a revoked grant
+			prompt: url.searchParams.has('consent') ? 'consent' : undefined,
 			scope: SCOPES,
 			state,
 			code_challenge: codeChallenge,
