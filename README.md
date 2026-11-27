@@ -40,7 +40,7 @@ Calendars whose group or name contains `community`, `event` or `retreat` (`JOB_C
 
 | Property | Content |
 | --- | --- |
-| `jobs` | JSON array of `{ key, title, slots, askDetails, sos }`. `key` is derived from the title when a job is created and never changes (lowercase letters and digits). `askDetails` needs `slots` = 1. `sos`: the daily agenda calls for help while the job is empty. |
+| `jobs` | JSON array of `{ key, title, slots, askDetails, sos, description? }`. `key` is derived from the title when a job is created and never changes (lowercase letters and digits). `askDetails` needs `slots` = 1. `sos`: the daily agenda calls for help while the job is empty. `description` (optional, up to 200 characters) is shown folded under the job in the week plan. All jobs together must stay within 1024 characters, because Google cuts longer property values. |
 | `type` | stable key of this kind of event, a slug of the title set once (e.g. `lunch`). Sign-ups are stored under it, so do not change it. |
 
 - For an event of a series the properties go to the series master and the instances inherit them. "Only this event" writes them on the instance. Saving jobs for the whole series later overwrites such exceptions.
