@@ -530,7 +530,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 </fieldset>
 			</TabItem>
 			<TabItem key="resources" title="Rooms ({form.resourceIds.length})">
-<fieldset disabled={readOnly} class="contents space-y-3">
+<fieldset disabled={readOnly} class="contents space-y-6">
 					{#each resourceGroups as g (g.id)}
 						<fieldset>
 							<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
@@ -607,10 +607,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 						<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
 						{#if conflicts.length > 1}
 							<div class="space-y-2 rounded-lg bg-surface-2 p-3">
-								<label class="flex items-center gap-2 text-sm">
-									<input type="checkbox" checked={picked.length === conflicts.length} onchange={(e) => (picked = e.currentTarget.checked ? conflicts.map((c) => c.key) : [])} />
-									Select all ({picked.length}/{conflicts.length})
-								</label>
+								<Checkbox checked={picked.length === conflicts.length} onchange={(e) => (picked = (e.currentTarget as HTMLInputElement).checked ? conflicts.map((c) => c.key) : [])}>Select all ({picked.length}/{conflicts.length})</Checkbox>
 								<div class="flex flex-wrap items-center gap-2">
 									<Button size="xs" color="alternative" disabled={!picked.length || resolving} onclick={() => resolve(pickedConflicts, 'release')}>Release selected</Button>
 									<select class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60" bind:value={bulkTo} disabled={!pickedConflicts.length || !bulkAlts.length} aria-label="Move the selected reservations to">
@@ -626,10 +623,9 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 						{#each conflicts as c (c.key)}
 							{@const alts = alternatives([c])}
 							<div class="space-y-2 rounded-lg border border-line p-3">
-								<label class="flex items-start gap-2 text-sm">
-									<input type="checkbox" class="mt-1" value={c.key} bind:group={picked} />
-									<span><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></span>
-								</label>
+								<Checkbox value={c.key} bind:group={picked} class="items-start">
+									<span class="text-sm"><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></span>
+								</Checkbox>
 								<div class="flex flex-wrap items-center gap-2">
 									<Button size="xs" color="alternative" disabled={resolving} onclick={() => resolve([c], 'release')}>Release room</Button>
 									<select
