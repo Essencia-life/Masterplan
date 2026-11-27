@@ -437,7 +437,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 		<!-- the tab bodies scroll, the bar and footer stay -->
 		<Tabs bind:selected={tab} tabStyle="underline" class="px-3" contentClass="mt-0 min-h-0 flex-1 space-y-3 md:overflow-y-auto rounded-none bg-transparent p-4 dark:bg-transparent">
 			<TabItem key="details" title="Details">
-<fieldset disabled={readOnly} class="contents">
+<fieldset disabled={readOnly} class="contents space-y-3">
 					<div>
 						<Label for="f-title" class="mb-1">Title</Label>
 						<Input id="f-title" bind:value={form.title} placeholder="e.g. Yoga retreat" />
@@ -530,7 +530,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 </fieldset>
 			</TabItem>
 			<TabItem key="resources" title="Rooms ({form.resourceIds.length})">
-<fieldset disabled={readOnly} class="contents">
+<fieldset disabled={readOnly} class="contents space-y-3">
 					{#each resourceGroups as g (g.id)}
 						<fieldset>
 							<legend class="mb-1 flex w-full items-center justify-between font-display text-base font-bold">
@@ -550,7 +550,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 			</TabItem>
 			{#if partsEnabled}
 				<TabItem key="participants" title="People ({form.participants.length})">
-<fieldset disabled={readOnly} class="contents">
+<fieldset disabled={readOnly} class="contents space-y-3">
 					{#if mailHint}<p class="text-sm text-muted">{mailHint}</p>{/if}
 					{#each form.participants as p, i (i)}
 						<div class="flex items-center gap-2">
@@ -567,7 +567,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 			{/if}
 			{#if jobsEnabled}
 				<TabItem key="jobs" title="Jobs ({form.jobs.length})">
-<fieldset disabled={readOnly} class="contents">
+<fieldset disabled={readOnly} class="contents space-y-3">
 					<p class="text-sm text-muted">People sign up for these jobs in the Telegram week plan.</p>
 					{#if form.seriesId}<p class="text-xs text-muted">Save saves the jobs for all events of the series; the arrow next to Save has the other options.</p>{/if}
 					{#each form.jobs as job, i (i)}
@@ -603,7 +603,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 			{/if}
 			{#if conflicts.length}
 				<TabItem key="conflicts" title="Conflicts ({conflicts.length})">
-<fieldset disabled={readOnly} class="contents">
+<fieldset disabled={readOnly} class="contents space-y-3">
 						<p class="text-sm text-muted">The booking itself stays – only its room reservation is changed. For a series this affects just the conflicting date.</p>
 						{#if conflicts.length > 1}
 							<div class="space-y-2 rounded-lg bg-surface-2 p-3">
