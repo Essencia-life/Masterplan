@@ -5,11 +5,12 @@ import type { CalEvent } from '#lib/types';
 
 /** "{group}-{floor}-{name} (50)" → group, floor, name. The capacity in brackets is dropped. */
 export function parseResourceName(raw: string) {
+	const capacity = Number(/\((\d+)\)\s*$/.exec(raw)?.[1]) || undefined;
 	const clean = raw.replace(/\s*\(\d+\)\s*$/, '').trim();
 	const parts = clean.split(/\s*-\s*/);
-	if (parts.length >= 3 && /^\d+$/.test(parts[1])) return { group: parts[0], floor: parts[1], name: parts.slice(2).join('-') };
-	if (parts.length >= 2) return { group: parts[0], floor: '', name: parts.slice(1).join('-') };
-	return { group: 'Other', floor: '', name: clean };
+	if (parts.length >= 3 && /^\d+$/.test(parts[1])) return { group: parts[0], floor: parts[1], name: parts.slice(2).join('-'), capacity };
+	if (parts.length >= 2) return { group: parts[0], floor: '', name: parts.slice(1).join('-'), capacity };
+	return { group: 'Other', floor: '', name: clean, capacity };
 }
 
 /** Calendars are named "{group}/{name}"; anything else is not part of the booking tool. */

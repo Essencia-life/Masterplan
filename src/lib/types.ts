@@ -10,6 +10,8 @@ export type RowInfo = {
 	groupId: string;
 	color: string;
 	available: boolean;
+	/** persons, from the "(50)" in a resource calendar name */
+	capacity?: number;
 	/** bookings can be created/edited here (calendars with write access) */
 	writable: boolean;
 };
