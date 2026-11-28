@@ -5,6 +5,7 @@ import { getRequestEvent } from '$app/server';
 import { createHash } from 'node:crypto';
 import { cachedRows, invalidateRows } from '#lib/server/cache';
 import { clearSession } from '#lib/server/session';
+import { forgetRefreshToken } from '#lib/server/tokens';
 import { oauthClient } from '#lib/server/oauth';
 import { addDays, dayOf, eventRange, localDay, localTime, normalize, parseCalendarName, parseResourceName } from '#lib/server/parse';
 import { isResourceId } from '#lib/calendar-id';
@@ -263,6 +264,8 @@ export async function asUser<T>(fn: (api: calendar_v3.Calendar) => Promise<T>): 
 		const msg = e instanceof Error ? e.message : '';
 		if (/invalid_grant|invalid_token|Invalid Credentials/i.test(msg)) {
 			console.error('session ended by Google:', getRequestEvent().locals.user?.email, msg);
+			const email = getRequestEvent().locals.user?.email;
+			if (email) await forgetRefreshToken(email).catch(() => {}); // the next sign-in must ask for consent again
 			clearSession(getRequestEvent().cookies);
 			error(401, 'Your session expired, please sign in again');
 		}

@@ -106,3 +106,10 @@ export async function claimedAt(keys: string[]): Promise<(string | null)[]> {
 export async function releaseClaim(key: string) {
 	await redis?.del(key).catch((e) => console.error('release failed', e));
 }
+
+const kvMemory = new Map<string, string>();
+
+/** Plain persistent values (no expiry); in-process only when Redis is not configured (local dev). */
+export const kvGet = async (key: string): Promise<string | null> => (redis ? ((await redis.get<string>(key)) ?? null) : (kvMemory.get(key) ?? null));
+export const kvSet = async (key: string, value: string) => void (redis ? await redis.set(key, value) : kvMemory.set(key, value));
+export const kvDel = async (key: string) => void (redis ? await redis.del(key) : kvMemory.delete(key));
