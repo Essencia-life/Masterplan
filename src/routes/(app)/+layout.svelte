@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, tick, untrack } from 'svelte';
 	import { fly, slide } from 'svelte/transition';
@@ -265,8 +265,16 @@
 	let today = $state(TODAY);
 	const tickToday = () => (today = isoToDay(localTodayIso()));
 
+	// a page restored from the back/forward cache shows old data: reload the data in place (no navigation, the panel keeps its inputs)
+	async function onPageShow(e: PageTransitionEvent) {
+		if (!e.persisted) return;
+		await invalidateAll();
+		await timeline.refresh(openRowIds, lo, hi, !!data.user);
+	}
+
 	onMount(() => {
 		timeline.restore();
+		window.addEventListener('pageshow', onPageShow);
 		// the interval is throttled in background tabs, so a returning tab checks right away
 		const clock = setInterval(tickToday, 60_000);
 		document.addEventListener('visibilitychange', tickToday);
@@ -279,6 +287,7 @@
 			ro.disconnect();
 			clearInterval(clock);
 			document.removeEventListener('visibilitychange', tickToday);
+			window.removeEventListener('pageshow', onPageShow);
 		};
 	});
 

@@ -156,6 +156,27 @@ export class Timeline {
 		}
 	}
 
+	/**
+	 * Re-read the days [lo, hi) of the given rows and replace what is cached for that window (also removes deleted events).
+	 * Signed-in users bypass the shared cache, visitors get the public view; nothing is cleared first, so the timeline does not flicker.
+	 */
+	async refresh(rowIds: string[], lo: number, hi: number, signedIn: boolean) {
+		const from = dayToIso(lo);
+		const to = dayToIso(hi);
+		try {
+			for (let i = 0; i < rowIds.length; i += 40) {
+				const ids = rowIds.slice(i, i + 40);
+				if (signedIn) this.applyFresh(await refreshRows({ rowIds: ids, from, to }));
+				else {
+					const events = await getEvents({ rowIds: ids, from, to });
+					for (const id of ids) if (this.byRow.has(id)) this.put(id, events.filter((e) => e.rowId === id), [lo, hi]);
+				}
+			}
+		} catch (e) {
+			this.error = e instanceof Error ? e.message : 'Could not refresh the events';
+		}
+	}
+
 	/** Fetch missing chunks for the given rows within the day window. */
 	async ensure(rowIds: string[], lo: number, hi: number) {
 		const c0 = Math.floor(lo / CHUNK);
