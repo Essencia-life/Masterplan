@@ -66,12 +66,16 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 	let mailSent = $state<EventDetail['mailSent']>({});
 	let tab = $state<'details' | 'resources' | 'participants' | 'jobs' | 'conflicts'>('details');
 	let resolving = $state(false);
+	/** which conflict button shows its spinner while `resolving` */
+	let resolvingBtn = $state('');
 	let moveTo = $state<Record<string, string>>({});
 	// keys of conflicts already released/moved: Google removes the room's copy with a delay, until then they stay hidden
 	let handled = $state<string[]>([]);
 	let picked = $state<string[]>([]);
 	let bulkTo = $state<string>();
 	let busy = $state(false);
+	/** which action runs while `busy`: decides which main button shows its spinner */
+	let busyAction = $state<'save' | 'delete'>('save');
 	let loadError = $state<string | null>(null);
 	/** an existing booking is being fetched */
 	let loading = $state(false);
@@ -295,8 +299,9 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 			.sort((a, b) => Number(b.own) - Number(a.own));
 	}
 
-	async function resolve(cs: Conflict[], action: 'release' | 'move', to?: string) {
+	async function resolve(cs: Conflict[], action: 'release' | 'move', to: string | undefined, btn: string) {
 		resolving = true;
+		resolvingBtn = btn;
 		saveError = null;
 		try {
 			for (const c of cs) {
@@ -337,6 +342,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 	// jobs and repeat describe the series, so they are saved for all events unless chosen otherwise
 	async function save(scope: 'this' | 'following' | 'all' = repeat || (jobsEnabled && jobsDirty) ? 'all' : 'this') {
 		busy = true;
+		busyAction = 'save';
 		saveError = null;
 		try {
 			const res = await saveEvent({
@@ -394,6 +400,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 		const what = { this: 'Delete this booking?', following: 'Delete this and all following events of the series?', all: 'Delete all events of the series?' }[scope];
 		if (!form.id || !confirm(what)) return;
 		busy = true;
+		busyAction = 'delete';
 		try {
 			const res = await deleteEvent({ calendar: form.calendar, id: form.id, scope });
 			timeline.applyFresh(res.fresh);
@@ -405,13 +412,6 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 		}
 	}
 	const close = () => goto('/', { reset: false });
-	// the header spinner shows saves, deletes and room changes of this panel
-	$effect(() => {
-		if (!busy && !resolving) return;
-		// untrack: `working++` also reads the counter, which would make this effect re-run on its own write
-		untrack(() => timeline.working++);
-		return () => untrack(() => timeline.working--);
-	});
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
@@ -613,14 +613,14 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 									Select all ({picked.length}/{conflicts.length})
 								</label>
 								<div class="flex flex-wrap items-center gap-2">
-									<Button size="xs" color="alternative" disabled={!picked.length || resolving} onclick={() => resolve(pickedConflicts, 'release')}>Release selected</Button>
+									<Button size="xs" color="alternative" loading={resolvingBtn === 'bulk-release'} disabled={!picked.length || resolving} onclick={() => resolve(pickedConflicts, 'release', undefined, 'bulk-release')}>Release selected</Button>
 									<select class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60" bind:value={bulkTo} disabled={!pickedConflicts.length || !bulkAlts.length} aria-label="Move the selected reservations to">
 										<option value={undefined} disabled>Move selected to…</option>
 										{#each bulkAlts as g (g.label)}
 											<optgroup label={g.label}>{#each g.items as r (r.id)}<option value={r.id}>{r.label}</option>{/each}</optgroup>
 										{/each}
 									</select>
-									<Button size="xs" disabled={!bulkTo || !pickedConflicts.length || resolving} onclick={() => resolve(pickedConflicts, 'move', bulkTo)}>Move</Button>
+									<Button size="xs" loading={resolvingBtn === 'bulk-move'} disabled={!bulkTo || !pickedConflicts.length || resolving} onclick={() => resolve(pickedConflicts, 'move', bulkTo, 'bulk-move')}>Move</Button>
 								</div>
 							</div>
 						{/if}
@@ -632,7 +632,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 									<span><b>{c.ev.title}</b><br /><span class="text-muted">{c.label} · {c.ev.start}{timeLabel(c.ev)}{c.ev.end > dayToIso(isoToDay(c.ev.start) + 1) ? ` – ${dayToIso(isoToDay(c.ev.end) - 1)}` : ''}</span></span>
 								</label>
 								<div class="flex flex-wrap items-center gap-2">
-									<Button size="xs" color="alternative" disabled={resolving} onclick={() => resolve([c], 'release')}>Release room</Button>
+									<Button size="xs" color="alternative" loading={resolvingBtn === 'release' + c.key} disabled={resolving} onclick={() => resolve([c], 'release', undefined, 'release' + c.key)}>Release room</Button>
 									<select
 										class="min-w-0 flex-1 rounded-lg border border-line bg-surface p-2 text-sm text-ink disabled:opacity-60"
 										bind:value={moveTo[c.key]}
@@ -646,7 +646,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 											</optgroup>
 										{/each}
 									</select>
-									<Button size="xs" disabled={!moveTo[c.key] || resolving} onclick={() => resolve([c], 'move', moveTo[c.key])}>Move</Button>
+									<Button size="xs" loading={resolvingBtn === 'move' + c.key} disabled={!moveTo[c.key] || resolving} onclick={() => resolve([c], 'move', moveTo[c.key], 'move' + c.key)}>Move</Button>
 								</div>
 								{#if !alts.length}<p class="text-xs text-muted">No free room for these dates: all {(timeline.meta?.rows ?? []).filter((r) => r.kind === 'resource').length} room calendars are either part of this booking or already booked.</p>{/if}
 							</div>
@@ -662,7 +662,7 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 <div class="sticky bottom-0 z-20 flex items-center gap-2 border-t border-line bg-surface p-3 md:static">
 	{#if form.id && inSeriesNow}
 		<ButtonGroup size="sm">
-			<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading || readOnly}>Delete</Button>
+			<Button color="red" outline size="sm" onclick={() => remove()} loading={busy && busyAction === 'delete'} disabled={busy || loading || readOnly}>Delete</Button>
 			<Button color="red" outline size="sm" id="delete-scope" aria-label="More ways to delete" disabled={busy || loading || readOnly}><ChevronDown size={16} /></Button>
 		</ButtonGroup>
 		<Dropdown triggeredBy="#delete-scope" simple placement="top-start" bind:isOpen={deleteOpen}>
@@ -670,11 +670,11 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('following'); }}>Delete this and following events</DropdownItem>
 			<DropdownItem class="whitespace-nowrap" onclick={() => { deleteOpen = false; void remove('all'); }}>Delete all events of the series</DropdownItem>
 		</Dropdown>
-	{:else if form.id}<Button color="red" outline size="sm" onclick={() => remove()} disabled={busy || loading || readOnly}>Delete</Button>{/if}
+	{:else if form.id}<Button color="red" outline size="sm" onclick={() => remove()} loading={busy && busyAction === 'delete'} disabled={busy || loading || readOnly}>Delete</Button>{/if}
 	<Button color="alternative" size="sm" class="ml-auto" onclick={close}>Cancel</Button>
 	{#if inSeriesNow}
 		<ButtonGroup size="sm">
-			<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
+			<Button size="sm" onclick={() => save()} loading={busy && busyAction === 'save'} disabled={!valid || loading || busy}>Save</Button>
 			<Button size="sm" id="save-scope" aria-label="More ways to save" disabled={!valid || loading || busy}><ChevronDown size={16} /></Button>
 		</ButtonGroup>
 		<Dropdown triggeredBy="#save-scope" simple placement="top-end" bind:isOpen={scopeOpen}>
@@ -684,6 +684,6 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 			<DropdownItem class="whitespace-nowrap" disabled={dayChanged} onclick={() => { scopeOpen = false; void save('all'); }}>Save all events of the series</DropdownItem>
 		</Dropdown>
 	{:else}
-		<Button size="sm" onclick={() => save()} loading={busy} disabled={!valid || loading}>Save</Button>
+		<Button size="sm" onclick={() => save()} loading={busy && busyAction === 'save'} disabled={!valid || loading || busy}>Save</Button>
 	{/if}
 </div>
