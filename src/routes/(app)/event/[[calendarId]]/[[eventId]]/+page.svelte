@@ -408,8 +408,9 @@ import { jobsLength, jobsProblem, MAX_JOBS_LENGTH, newJob, prepareJobs, slugify,
 	// the header spinner shows saves, deletes and room changes of this panel
 	$effect(() => {
 		if (!busy && !resolving) return;
-		timeline.working++;
-		return () => timeline.working--;
+		// untrack: `working++` also reads the counter, which would make this effect re-run on its own write
+		untrack(() => timeline.working++);
+		return () => untrack(() => timeline.working--);
 	});
 </script>
 
