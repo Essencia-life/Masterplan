@@ -2,6 +2,7 @@ import { error, redirect } from '@sveltejs/kit';
 import * as env from '$app/env/private';
 import { oauthClient, safeReturnTo } from '#lib/server/oauth';
 import { decrypt, OAUTH_COOKIE, setSession } from '#lib/server/session';
+import { loadRefreshToken, saveRefreshToken } from '#lib/server/tokens';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
@@ -18,9 +19,12 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: env.GOOGLE_CLIENT_ID });
 	const p = ticket.getPayload();
 	if (!p?.email || !p.email_verified || p.hd !== env.ALLOWED_DOMAIN) error(403, `Only ${env.ALLOWED_DOMAIN} accounts can sign in`);
-	// without the consent screen Google only returns a refresh token for the first grant: ask again, this time with it
-	if (!tokens.refresh_token) redirect(303, `/auth/login?consent=1&returnTo=${encodeURIComponent(saved.returnTo)}`);
+	// Google only returns a refresh token for the first grant: later sign-ins use the stored one, and only without any
+	// (never granted, or revoked) the login is repeated once with the consent screen
+	if (tokens.refresh_token) await saveRefreshToken(p.email, tokens.refresh_token);
+	const refreshToken = tokens.refresh_token ?? (await loadRefreshToken(p.email));
+	if (!refreshToken) redirect(303, `/auth/login?consent=1&returnTo=${encodeURIComponent(saved.returnTo)}`);
 
-	setSession(cookies, url, { email: p.email, name: p.name ?? p.email, refreshToken: tokens.refresh_token });
+	setSession(cookies, url, { email: p.email, name: p.name ?? p.email, refreshToken });
 	redirect(303, safeReturnTo(saved.returnTo));
 };
