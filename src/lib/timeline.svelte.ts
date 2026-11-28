@@ -36,8 +36,6 @@ export class Timeline {
 	loading = $state(0);
 	/** rows whose events are being fetched right now (spinner next to the group title) */
 	rowLoading = new SvelteSet<string>();
-	/** saves, deletes etc. running in a panel (spinner in the header) */
-	working = $state(0);
 	/** collapsed groups are never fetched; defaults to the groups with calendars until restore() ran */
 	expanded = new SvelteSet<string>();
 	/** rows whose events are hidden (not fetched, not drawn); remembered per browser */
