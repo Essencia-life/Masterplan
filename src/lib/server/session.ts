@@ -44,7 +44,11 @@ export function setSession(cookies: Cookies, url: URL, s: Omit<Session, 'exp'>) 
 }
 
 export function readSession(cookies: Cookies): Session | null {
-	const s = decrypt<Session>(cookies.get(SESSION_COOKIE));
+	const raw = cookies.get(SESSION_COOKIE);
+	const s = decrypt<Session>(raw);
+	// a cookie that is sent but not accepted explains "shown as signed in, then signed out": say why in the log
+	if (raw && !s) console.error('session cookie rejected: cannot be decrypted (changed SESSION_SECRET or damaged cookie)');
+	else if (s && s.exp <= Date.now()) console.error('session cookie rejected: expired', new Date(s.exp).toISOString());
 	return s && s.exp > Date.now() ? s : null;
 }
 
